@@ -1,13 +1,14 @@
 from django.shortcuts import get_object_or_404
+from django.contrib.auth import get_user_model, authenticate, login, logout
 from django.contrib.auth.decorators import login_required
-from django.contrib.auth import get_user_model
-from .models import Post, PostAction
 from django.http import JsonResponse
+from django.views.decorators.csrf import csrf_exempt
+from django.middleware.csrf import get_token
+from .models import Post, PostAction
 import json
 
 User = get_user_model()
 
-@login_required
 def post_list(request):
     posts = Post.objects.all().order_by('-created_at')
     data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count, 
@@ -22,8 +23,9 @@ def post_create(request):
         text = data.get('text')
         if text:
             post = Post.objects.create(author=request.user, text=text)
-            return JsonResponse({'id': post.id, 'text': post.text, 'author': post.author.username})
-    return JsonResponse({'error': 'Método inválido ou texto ausente'}, status=400)
+            return JsonResponse({'id': post.id, 'text': post.text, 'author': request.user.username})
+        return JsonResponse({'error': 'Texto ausente'}, status=400)
+    return JsonResponse({'error': 'Método inválido'}, status=400)
 
 @login_required
 def post_like(request, post_id):
@@ -77,7 +79,67 @@ def follow_user(request, user_id):
         request.user.following.add(user_to_follow)
     return JsonResponse({'status': 'followed', 'following_count': request.user.following.count()})
 
-@login_required
 def user_suggestions(request):
-    users = User.objects.exclude(id=request.user.id).values('id', 'username')
+    users = User.objects.exclude(id=request.user.id).values('id', 'username') if request.user.is_authenticated else User.objects.all().values('id', 'username')[:5]
     return JsonResponse({'suggestions': list(users)})
+
+@login_required
+def profile(request):
+    user = request.user
+    profile_data = {
+        'username': user.username,
+        'handle': user.username.lower(),
+        'bio': user.bio or '',
+        'location': user.location or '',
+        'profile_picture': user.profile_picture.url if user.profile_picture else '',
+        'cover_image': user.cover_image.url if user.cover_image else '',
+        'followers': user.followers_set.count(),
+        'following': user.following.count(),
+        'posts_count': user.posts.count(),
+    }
+    return JsonResponse(profile_data)
+
+@login_required
+def profile_posts(request):
+    posts = Post.objects.filter(author=request.user).order_by('-created_at')
+    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count, 
+             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count} 
+            for post in posts]
+    return JsonResponse({'posts': data})
+
+@csrf_exempt
+def login_view(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        username = data.get('username')
+        password = data.get('password')
+        user = authenticate(request, username=username, password=password)
+        if user is not None:
+            login(request, user)
+            return JsonResponse({'status': 'success', 'username': user.username})
+        return JsonResponse({'error': 'Credenciais inválidas'}, status=401)
+    return JsonResponse({'error': 'Método inválido'}, status=400)
+
+@csrf_exempt
+def register_view(request):
+    if request.method == 'POST':
+        data = json.loads(request.body)
+        username = data.get('username')
+        password = data.get('password')
+        email = data.get('email')
+        if User.objects.filter(username=username).exists():
+            return JsonResponse({'error': 'Usuário já existe'}, status=400)
+        user = User.objects.create_user(username=username, password=password, email=email)
+        login(request, user)
+        return JsonResponse({'status': 'success', 'username': user.username})
+    return JsonResponse({'error': 'Método inválido'}, status=400)
+
+def get_csrf_token(request):
+    return JsonResponse({'csrfToken': get_token(request)})
+
+@csrf_exempt
+def logout_view(request):
+    if request.method == 'POST':
+        logout(request)
+        return JsonResponse({'status': 'success'})
+    return JsonResponse({'error': 'Método inválido'}, status=400)

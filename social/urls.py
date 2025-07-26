@@ -10,5 +10,11 @@ urlpatterns = [
     path('posts/<int:post_id>/share/', views.post_share, name='post_share'),
     path('feed/', views.feed_list, name='feed_list'),
     path('follow/<int:user_id>/', views.follow_user, name='follow_user'),
-    path('suggestions/', views.user_suggestions, name='user_suggestions'),  # Correção aqui
+    path('suggestions/', views.user_suggestions, name='user_suggestions'),
+    path('profile/', views.profile, name='profile'),
+    path('profile/posts/', views.profile_posts, name='profile_posts'),
+    path('login/', views.login_view, name='login'),
+    path('register/', views.register_view, name='register'),
+    path('get_csrf_token/', views.get_csrf_token, name='get_csrf_token'),
+    path('logout/', views.logout_view, name='logout'),
 ]
