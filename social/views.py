@@ -143,3 +143,29 @@ def logout_view(request):
         logout(request)
         return JsonResponse({'status': 'success'})
     return JsonResponse({'error': 'Método inválido'}, status=400)
+
+@csrf_exempt
+@login_required
+def profile_update(request):
+    if request.method == 'PATCH':
+        user = request.user
+        try:
+            bio = request.POST.get('bio', user.bio)
+            location = request.POST.get('location', user.location)
+            profile_picture = request.FILES.get('profile_picture', None)
+
+            user.bio = bio
+            user.location = location
+            if profile_picture:
+                user.profile_picture = profile_picture
+            user.save()
+
+            return JsonResponse({
+                'status': 'success',
+                'bio': user.bio,
+                'location': user.location,
+                'profile_picture': user.profile_picture.url if user.profile_picture else '',
+            })
+        except Exception as e:
+            return JsonResponse({'error': str(e)}, status=400)
+    return JsonResponse({'error': 'Método inválido'}, status=400)
