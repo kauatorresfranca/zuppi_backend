@@ -12,7 +12,8 @@ User = get_user_model()
 def post_list(request):
     posts = Post.objects.all().order_by('-created_at')
     data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count, 
-             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count} 
+             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count, 
+             'created_at': post.created_at.isoformat()} 
             for post in posts]
     return JsonResponse({'posts': data})
 
@@ -23,52 +24,75 @@ def post_create(request):
         text = data.get('text')
         if text:
             post = Post.objects.create(author=request.user, text=text)
-            return JsonResponse({'id': post.id, 'text': post.text, 'author': request.user.username})
+            return JsonResponse({'id': post.id, 'text': post.text, 'author': request.user.username, 'created_at': post.created_at.isoformat()})
         return JsonResponse({'error': 'Texto ausente'}, status=400)
     return JsonResponse({'error': 'Método inválido'}, status=400)
 
 @login_required
+def post_actions(request, post_id):
+    post = get_object_or_404(Post, id=post_id)
+    actions = PostAction.objects.filter(user=request.user, post=post).values('action_type')
+    return JsonResponse({'actions': list(actions)})
+
+@login_required
 def post_like(request, post_id):
     post = get_object_or_404(Post, id=post_id)
-    action, created = PostAction.objects.get_or_create(user=request.user, post=post, action_type='like')
-    if created:
+    action = PostAction.objects.filter(user=request.user, post=post, action_type='like').first()
+    if action:
+        action.delete()
+        post.likes_count = max(0, post.likes_count - 1)
+    else:
+        PostAction.objects.create(user=request.user, post=post, action_type='like')
         post.likes_count += 1
-        post.save()
-    return JsonResponse({'likes_count': post.likes_count})
+    post.save()
+    return JsonResponse({'likes_count': post.likes_count, 'id': post.id})
 
 @login_required
 def post_repost(request, post_id):
     post = get_object_or_404(Post, id=post_id)
-    action, created = PostAction.objects.get_or_create(user=request.user, post=post, action_type='repost')
-    if created:
+    action = PostAction.objects.filter(user=request.user, post=post, action_type='repost').first()
+    if action:
+        action.delete()
+        post.reposts_count = max(0, post.reposts_count - 1)
+    else:
+        PostAction.objects.create(user=request.user, post=post, action_type='repost')
         post.reposts_count += 1
-        post.save()
-    return JsonResponse({'reposts_count': post.reposts_count})
+    post.save()
+    return JsonResponse({'reposts_count': post.reposts_count, 'id': post.id})
 
 @login_required
 def post_comment(request, post_id):
     post = get_object_or_404(Post, id=post_id)
-    action, created = PostAction.objects.get_or_create(user=request.user, post=post, action_type='comment')
-    if created:
+    action = PostAction.objects.filter(user=request.user, post=post, action_type='comment').first()
+    if action:
+        action.delete()
+        post.comments_count = max(0, post.comments_count - 1)
+    else:
+        PostAction.objects.create(user=request.user, post=post, action_type='comment')
         post.comments_count += 1
-        post.save()
-    return JsonResponse({'comments_count': post.comments_count})
+    post.save()
+    return JsonResponse({'comments_count': post.comments_count, 'id': post.id})
 
 @login_required
 def post_share(request, post_id):
     post = get_object_or_404(Post, id=post_id)
-    action, created = PostAction.objects.get_or_create(user=request.user, post=post, action_type='share')
-    if created:
+    action = PostAction.objects.filter(user=request.user, post=post, action_type='share').first()
+    if action:
+        action.delete()
+        post.shares_count = max(0, post.shares_count - 1)
+    else:
+        PostAction.objects.create(user=request.user, post=post, action_type='share')
         post.shares_count += 1
-        post.save()
-    return JsonResponse({'shares_count': post.shares_count})
+    post.save()
+    return JsonResponse({'shares_count': post.shares_count, 'id': post.id})
 
 @login_required
 def feed_list(request):
     following_users = request.user.following.all()
     posts = Post.objects.filter(author__in=following_users).order_by('-created_at')
     data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count, 
-             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count} 
+             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count, 
+             'created_at': post.created_at.isoformat()} 
             for post in posts]
     return JsonResponse({'posts': data})
 
@@ -76,8 +100,11 @@ def feed_list(request):
 def follow_user(request, user_id):
     user_to_follow = get_object_or_404(User, id=user_id)
     if user_to_follow != request.user:
-        request.user.following.add(user_to_follow)
-    return JsonResponse({'status': 'followed', 'following_count': request.user.following.count()})
+        if request.user.following.filter(id=user_id).exists():
+            request.user.following.remove(user_to_follow)
+        else:
+            request.user.following.add(user_to_follow)
+    return JsonResponse({'status': 'updated', 'following_count': request.user.following.count()})
 
 def user_suggestions(request):
     users = User.objects.exclude(id=request.user.id).values('id', 'username') if request.user.is_authenticated else User.objects.all().values('id', 'username')[:5]
@@ -96,6 +123,7 @@ def profile(request):
         'followers': user.followers_set.count(),
         'following': user.following.count(),
         'posts_count': user.posts.count(),
+        'following': [user.id for user in user.following.all()]
     }
     return JsonResponse(profile_data)
 
@@ -103,7 +131,8 @@ def profile(request):
 def profile_posts(request):
     posts = Post.objects.filter(author=request.user).order_by('-created_at')
     data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count, 
-             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count} 
+             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count, 
+             'created_at': post.created_at.isoformat()} 
             for post in posts]
     return JsonResponse({'posts': data})
 

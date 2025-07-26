@@ -8,6 +8,7 @@ urlpatterns = [
     path('posts/<int:post_id>/repost/', views.post_repost, name='post_repost'),
     path('posts/<int:post_id>/comment/', views.post_comment, name='post_comment'),
     path('posts/<int:post_id>/share/', views.post_share, name='post_share'),
+    path('posts/<int:post_id>/actions/', views.post_actions, name='post_actions'),  # Nova rota
     path('feed/', views.feed_list, name='feed_list'),
     path('follow/<int:user_id>/', views.follow_user, name='follow_user'),
     path('suggestions/', views.user_suggestions, name='user_suggestions'),
