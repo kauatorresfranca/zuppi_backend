@@ -73,11 +73,20 @@ if ENVIRONMENT == 'production':
         'https://zuppi.vercel.app/',
         'https://zuppi-backend.onrender.com', # Adicionada para compatibilidade extra
     ]
+    # >>> ADIÇÕES CRUCIAIS PARA O COOKIE CSRF <<<
+    CSRF_COOKIE_DOMAIN = 'zuppi.vercel.app' # Define o domínio para o cookie CSRF
+    CSRF_COOKIE_SECURE = True # Garante que o cookie só é enviado via HTTPS
+    CSRF_COOKIE_SAMESITE = 'None' # Permite envio cross-site (requer Secure=True)
 else:
     CSRF_TRUSTED_ORIGINS = [
         'http://localhost:3000',
         'http://localhost:5173',
     ]
+    # >>> ADIÇÕES PARA AMBIENTE DE DESENVOLVIMENTO <<<
+    CSRF_COOKIE_DOMAIN = None # Permite que o Django defina o domínio automaticamente para localhost
+    CSRF_COOKIE_SECURE = False # Não precisa de HTTPS em desenvolvimento
+    CSRF_COOKIE_SAMESITE = 'Lax' # Ou 'None' com secure=True, mas Lax é mais seguro para localhost
+
 
 ROOT_URLCONF = 'zuppi.urls'
 
