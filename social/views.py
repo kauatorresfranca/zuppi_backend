@@ -2,8 +2,7 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model, authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.views.decorators.csrf import csrf_exempt
-from django.middleware.csrf import get_token
+from django.middleware.csrf import get_token # Removido csrf_exempt daqui
 from .models import Post, PostAction
 import json
 import logging
@@ -22,9 +21,9 @@ User = get_user_model()
 
 def post_list(request):
     posts = Post.objects.all().order_by('-created_at')
-    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count, 
-             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count, 
-             'created_at': post.created_at.isoformat()} 
+    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count,
+             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count,
+             'created_at': post.created_at.isoformat()}
             for post in posts]
     return JsonResponse({'posts': data})
 
@@ -107,9 +106,9 @@ def post_share(request, post_id):
 def feed_list(request):
     following_users = request.user.following.all()
     posts = Post.objects.filter(author__in=following_users).order_by('-created_at')
-    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count, 
-             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count, 
-             'created_at': post.created_at.isoformat()} 
+    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count,
+             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count,
+             'created_at': post.created_at.isoformat()}
             for post in posts]
     logger.debug(f"Feed response: {{'posts': {data}}}")
     return JsonResponse({'posts': data})
@@ -150,14 +149,14 @@ def profile(request):
 @login_required
 def profile_posts(request):
     posts = Post.objects.filter(author=request.user).order_by('-created_at')
-    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count, 
-             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count, 
-             'created_at': post.created_at.isoformat()} 
+    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count,
+             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count,
+             'created_at': post.created_at.isoformat()}
             for post in posts]
     logger.debug(f"Profile posts response: {{'posts': {data}}}")
     return JsonResponse({'posts': data})
 
-@csrf_exempt
+# Removido @csrf_exempt
 def login_view(request):
     if request.method == 'POST':
         data = json.loads(request.body)
@@ -172,7 +171,7 @@ def login_view(request):
         return JsonResponse({'error': 'Credenciais inválidas'}, status=401)
     return JsonResponse({'error': 'Método inválido'}, status=400)
 
-@csrf_exempt
+# Removido @csrf_exempt
 def register_view(request):
     if request.method == 'POST':
         data = json.loads(request.body)
@@ -194,7 +193,7 @@ def get_csrf_token(request):
     logger.debug(f"CSRF token gerado: {token}")
     return JsonResponse({'csrfToken': token})
 
-@csrf_exempt
+# Removido @csrf_exempt
 def logout_view(request):
     if request.method == 'POST':
         logout(request)
@@ -209,7 +208,7 @@ def profile_update(request):
         try:
             # Captura o corpo da requisição bruta ANTES de qualquer leitura
             raw_body = request.body
-            
+
             logger.debug(f"Request headers: {dict(request.headers)}")
             logger.debug(f"Content-Type: {request.content_type}")
             logger.debug(f"Raw request body length: {len(raw_body)}")
@@ -225,35 +224,35 @@ def profile_update(request):
                     # A classe Request do DRF é perfeita para isso, pois ela envolve a HttpRequest original.
                     # É CRÍTICO que o request.body não seja lido ANTES disso, exceto para o log.
                     # Como já lemos para o log (raw_body), precisamos recriar o stream.
-                    
+
                     # Crie um HttpRequest "mock" que MultiPartParser possa entender.
                     # Definimos ._body e ._stream para que o parser possa lê-lo.
                     # O Request do DRF internamente vai usar request.body para preencher ._stream
                     # se ele ainda não foi lido. Como já lemos, precisamos garantir que o stream
                     # seja passado corretamente ou resetado.
-                    
+
                     # A maneira mais segura é passar o HttpRequest original para o Request do DRF.
                     # Ele vai gerenciar o acesso ao stream.
-                    
+
                     # Resetar o stream do HttpRequest original se ele já foi consumido
                     # A propriedade `request.body` já consome o stream.
                     # Para que o DRF Request possa ler, precisamos "rebobinar" ou recriar o stream.
                     # Uma forma mais direta para garantir que o DRF Request receba um stream limpo:
-                    
+
                     # Cria um Request do DRF. Ele irá encapsular o HttpRequest original.
                     # O DRF Request sabe como lidar com o corpo da HttpRequest.
                     # E o DRF Request é o objeto que o MultiPartParser espera.
-                    
+
                     # Vamos criar um request temporário que o DRF Request possa envolver.
                     # Isso é feito pelo construtor de Request do DRF.
                     # Apenas precisamos garantir que o HttpRequest original não tenha seu stream consumido
                     # antes de ser passado para o Request do DRF.
                     # A leitura de `request.body` para logging já consumiu, então essa é a complicação.
-                    
+
                     # O jeito mais limpo é o DRF Request fazer a leitura do corpo.
                     # Mas se já lemos para log, precisamos fazer o Django Request acessível novamente.
                     # Para isso, redefinimos `_read_started` e `_stream` do HttpRequest original.
-                    
+
                     if hasattr(request, '_read_started'): # Para Django > 2.0
                         request._read_started = False
                     if hasattr(request, '_stream'):
@@ -265,7 +264,7 @@ def profile_update(request):
 
                     # Agora, crie a request do DRF que envolve a request do Django
                     drf_request = Request(request, parsers=[MultiPartParser()])
-                    
+
                     # O DRF Request tem seus próprios .data e .FILES que já foram populados
                     # pelos parsers configurados durante a inicialização.
                     data = drf_request.data
@@ -287,7 +286,7 @@ def profile_update(request):
                 new_password = data.get('new_password')
                 # Note que 'remove_profile_picture' vem como string 'true'/'false' de form-data
                 remove_profile_picture = data.get('remove_profile_picture', 'false').lower() == 'true'
-                
+
                 logger.debug(f"Dados parseados (multipart): POST={dict(data)}, FILES={dict(files)}")
 
             elif request.content_type.startswith('application/json'):

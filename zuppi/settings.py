@@ -20,7 +20,12 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-_um@@ac&hg&^o^c8p37
 DEBUG = ENVIRONMENT != 'production'
 
 # Allow Render's domain in production and localhost for development
-ALLOWED_HOSTS = os.getenv('ALLOWED_HOSTS', 'localhost,127.0.0.1,zuppi-backend.onrender.com' if ENVIRONMENT == 'production' else 'localhost,127.0.0.1').split(',')
+# CORREÇÃO: Removido 'https://' do ALLOWED_HOSTS para o Vercel URL.
+# HARDCODED: Agora pega os valores diretamente, ignorando a variável de ambiente se for produção.
+if ENVIRONMENT == 'production':
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'zuppi-backend.onrender.com', 'zuppi.vercel.app']
+else:
+    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
 # Application definition
 INSTALLED_APPS = [
@@ -41,25 +46,37 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',  # For serving static files
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    'django.middleware.csrf.CsrfViewMiddleware', # Mantenha esta linha aqui, ela é que exige o token CSRF
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
 # CORS settings for React frontend
-CORS_ALLOWED_ORIGINS = os.getenv(
-    'CORS_ALLOWED_ORIGINS',
-    'https://zuppi-frontend.vercel.app' if ENVIRONMENT == 'production' else 'http://localhost:3000,http://localhost:5173'
-).split(',')
+# HARDCODED: Para garantir que o CORS funcione.
+if ENVIRONMENT == 'production':
+    CORS_ALLOWED_ORIGINS = [
+        'https://zuppi.vercel.app',
+    ]
+else:
+    CORS_ALLOWED_ORIGINS = [
+        'http://localhost:3000',
+        'http://localhost:5173',
+    ]
 
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF settings
-CSRF_TRUSTED_ORIGINS = os.getenv(
-    'CSRF_TRUSTED_ORIGINS',
-    'https://zuppi-backend.onrender.com,https://zuppi-frontend.vercel.app' if ENVIRONMENT == 'production' else 'http://localhost:3000,http://localhost:5173'
-).split(',')
+# HARDCODED: Para garantir que o CSRF funcione.
+if ENVIRONMENT == 'production':
+    CSRF_TRUSTED_ORIGINS = [
+        'https://zuppi.vercel.app',
+    ]
+else:
+    CSRF_TRUSTED_ORIGINS = [
+        'http://localhost:3000',
+        'http://localhost:5173',
+    ]
 
 ROOT_URLCONF = 'zuppi.urls'
 
