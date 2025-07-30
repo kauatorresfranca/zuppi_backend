@@ -21,7 +21,6 @@ DEBUG = ENVIRONMENT != 'production'
 
 # Allow Render's domain in production and localhost for development
 # CORREÇÃO: Removido 'https://' do ALLOWED_HOSTS para o Vercel URL.
-# HARDCODED: Agora pega os valores diretamente, ignorando a variável de ambiente se for produção.
 if ENVIRONMENT == 'production':
     ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'zuppi-backend.onrender.com', 'zuppi.vercel.app']
 else:
@@ -53,25 +52,26 @@ MIDDLEWARE = [
 ]
 
 # CORS settings for React frontend
-# HARDCODED: Para garantir que o CORS funcione.
+# USANDO CORS_ALLOWED_ORIGIN_REGEXES para flexibilidade com a barra final
 if ENVIRONMENT == 'production':
-    CORS_ALLOWED_ORIGINS = [
-        'https://zuppi.vercel.app',
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^https:\/\/zuppi\.vercel\.app\/?$", # Permite com ou sem barra final (usando /?)
     ]
 else:
-    CORS_ALLOWED_ORIGINS = [
-        'http://localhost:3000',
-        'http://localhost:5173',
+    CORS_ALLOWED_ORIGIN_REGEXES = [
+        r"^http:\/\/localhost:3000\/?$",
+        r"^http:\/\/localhost:5173\/?$",
     ]
 
 CORS_ALLOW_CREDENTIALS = True
 
 # CSRF settings
-# HARDCODED: Para garantir que o CSRF funcione.
+# Incluindo explicitamente ambas as variações (com e sem barra final) e o backend do Render
 if ENVIRONMENT == 'production':
     CSRF_TRUSTED_ORIGINS = [
         'https://zuppi.vercel.app',
         'https://zuppi.vercel.app/',
+        'https://zuppi-backend.onrender.com', # Adicionada para compatibilidade extra
     ]
 else:
     CSRF_TRUSTED_ORIGINS = [
