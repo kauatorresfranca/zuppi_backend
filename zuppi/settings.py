@@ -57,6 +57,7 @@ MIDDLEWARE = [
 if ENVIRONMENT == 'production':
     CORS_ALLOWED_ORIGINS = [
         'https://zuppi.vercel.app',
+        'https://zuppi.vercel.app/',
     ]
 else:
     CORS_ALLOWED_ORIGINS = [
@@ -71,6 +72,7 @@ CORS_ALLOW_CREDENTIALS = True
 if ENVIRONMENT == 'production':
     CSRF_TRUSTED_ORIGINS = [
         'https://zuppi.vercel.app',
+        'https://zuppi.vercel.app/',
     ]
 else:
     CSRF_TRUSTED_ORIGINS = [
