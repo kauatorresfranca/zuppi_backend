@@ -57,7 +57,6 @@ MIDDLEWARE = [
 if ENVIRONMENT == 'production':
     CORS_ALLOWED_ORIGINS = [
         'https://zuppi.vercel.app',
-        'https://zuppi.vercel.app/',
     ]
 else:
     CORS_ALLOWED_ORIGINS = [
