@@ -53,7 +53,6 @@ MIDDLEWARE = [
 # CORS settings for React frontend
 CORS_ALLOW_CREDENTIALS = True
 
-# >>> ALTERADO: Usando CORS_ALLOWED_ORIGINS para maior confiabilidade. <<<
 if ENVIRONMENT == 'production':
     CORS_ALLOWED_ORIGINS = [
         "https://zuppi.vercel.app",
@@ -64,7 +63,6 @@ else:
         "http://localhost:5173",
     ]
 
-# >>> Bloco de CORS completo com todos os cabeçalhos. <<<
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -87,7 +85,7 @@ if ENVIRONMENT == 'production':
         'https://zuppi.vercel.app/',
         'https://zuppi-backend.onrender.com',
     ]
-    CSRF_COOKIE_DOMAIN = 'zuppi.vercel.app'
+    # >>> ALTERADO: CSRF_COOKIE_DOMAIN foi removido aqui. <<<
     CSRF_COOKIE_SECURE = True
     CSRF_COOKIE_SAMESITE = 'None'
 else:
