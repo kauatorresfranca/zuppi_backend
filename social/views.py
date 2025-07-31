@@ -2,7 +2,7 @@ from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model, authenticate, login, logout
 from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
-from django.middleware.csrf import get_token # Removido csrf_exempt daqui
+from django.middleware.csrf import get_token
 from .models import Post, PostAction
 import json
 import logging
@@ -11,9 +11,9 @@ from django.views.decorators.cache import never_cache
 # --- IMPORTAÇÕES NECESSÁRIAS PARA O PARSING COM DRF MultiPartParser ---
 # Garanta que 'rest_framework' esteja no seu INSTALLED_APPS em settings.py
 from rest_framework.parsers import MultiPartParser
-from rest_framework.request import Request # Essencial para criar a request do DRF
-from rest_framework.exceptions import ParseError # Para capturar erros de parsing
-from io import BytesIO # Necessário para recriar o stream da requisição
+from rest_framework.request import Request
+from rest_framework.exceptions import ParseError
+from io import BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -180,12 +180,16 @@ def login_view(request):
 # Removido @csrf_exempt
 def register_view(request):
     if request.method == 'POST':
+        # Adicionei este log para depurar o erro 400
+        logger.debug(f"Recebendo requisição POST para registro. Corpo bruto: {request.body.decode('utf-8')}")
         try:
             data = json.loads(request.body)
             username = data.get('username')
             password = data.get('password')
             email = data.get('email')
-        except json.JSONDecodeError:
+            logger.debug(f"JSON parseado: username={username}, password={'*' * len(password) if password else 'None'}, email={email}")
+        except json.JSONDecodeError as e:
+            logger.error(f"Erro ao decodificar JSON na requisição de registro: {e}")
             return JsonResponse({'error': 'JSON inválido'}, status=400)
 
         if not username or not password or not email:
@@ -224,67 +228,26 @@ def profile_update(request):
     if request.method == 'PATCH':
         user = request.user
         try:
-            # Captura o corpo da requisição bruta ANTES de qualquer leitura
             raw_body = request.body
-
             logger.debug(f"Request headers: {dict(request.headers)}")
             logger.debug(f"Content-Type: {request.content_type}")
             logger.debug(f"Raw request body length: {len(raw_body)}")
             logger.debug(f"Raw request body: {raw_body.decode('utf-8', errors='ignore')}")
 
-            data = None # Para armazenar os dados de texto do formulário
-            files = None # Para armazenar os dados de arquivo
+            data = None
+            files = None
 
             if request.content_type.startswith('multipart/form-data'):
-                # --- Lógica de parsing usando DRF MultiPartParser para PATCH ---
                 try:
-                    # O MultiPartParser espera um objeto de request que tenha .stream e .META
-                    # A classe Request do DRF é perfeita para isso, pois ela envolve a HttpRequest original.
-                    # É CRÍTICO que o request.body não seja lido ANTES disso, exceto para o log.
-                    # Como já lemos para o log (raw_body), precisamos recriar o stream.
-
-                    # Crie um HttpRequest "mock" que MultiPartParser possa entender.
-                    # Definimos ._body e ._stream para que o parser possa lê-lo.
-                    # O Request do DRF internamente vai usar request.body para preencher ._stream
-                    # se ele ainda não foi lido. Como já lemos, precisamos garantir que o stream
-                    # seja passado corretamente ou resetado.
-
-                    # A maneira mais segura é passar o HttpRequest original para o Request do DRF.
-                    # Ele vai gerenciar o acesso ao stream.
-
-                    # Resetar o stream do HttpRequest original se ele já foi consumido
-                    # A propriedade `request.body` já consome o stream.
-                    # Para que o DRF Request possa ler, precisamos "rebobinar" ou recriar o stream.
-                    # Uma forma mais direta para garantir que o DRF Request receba um stream limpo:
-
-                    # Cria um Request do DRF. Ele irá encapsular o HttpRequest original.
-                    # O DRF Request sabe como lidar com o corpo da HttpRequest.
-                    # E o DRF Request é o objeto que o MultiPartParser espera.
-
-                    # Vamos criar um request temporário que o DRF Request possa envolver.
-                    # Isso é feito pelo construtor de Request do DRF.
-                    # Apenas precisamos garantir que o HttpRequest original não tenha seu stream consumido
-                    # antes de ser passado para o Request do DRF.
-                    # A leitura de `request.body` para logging já consumiu, então essa é a complicação.
-
-                    # O jeito mais limpo é o DRF Request fazer a leitura do corpo.
-                    # Mas se já lemos para log, precisamos fazer o Django Request acessível novamente.
-                    # Para isso, redefinimos `_read_started` e `_stream` do HttpRequest original.
-
-                    if hasattr(request, '_read_started'): # Para Django > 2.0
+                    if hasattr(request, '_read_started'):
                         request._read_started = False
                     if hasattr(request, '_stream'):
-                        request._stream.seek(0) # Rebobina o stream se ele já foi lido e é um BytesIO
-                    else: # Caso o stream ainda não tenha sido criado ou seja de outro tipo
+                        request._stream.seek(0)
+                    else:
                         request._stream = BytesIO(raw_body)
-                        request.read = request._stream.read # Garante que request.read() funcione
+                        request.read = request._stream.read
 
-
-                    # Agora, crie a request do DRF que envolve a request do Django
                     drf_request = Request(request, parsers=[MultiPartParser()])
-
-                    # O DRF Request tem seus próprios .data e .FILES que já foram populados
-                    # pelos parsers configurados durante a inicialização.
                     data = drf_request.data
                     files = drf_request.FILES
 
@@ -295,32 +258,27 @@ def profile_update(request):
                     logger.error(f"Erro inesperado ao usar DRF MultiPartParser: {e.__class__.__name__}: {e}")
                     return JsonResponse({'error': f'Erro inesperado no parsing: {e}'}, status=400)
 
-                # Extrai os dados dos objetos QueryDict/Dict retornado pelo parser
-                # drf_request.data e drf_request.FILES já são QueryDicts ou semelhantes a dicionários
                 bio = data.get('bio', user.bio or '')
                 username = data.get('username')
                 profile_picture = files.get('profile_picture')
                 old_password = data.get('old_password')
                 new_password = data.get('new_password')
-                # Note que 'remove_profile_picture' vem como string 'true'/'false' de form-data
                 remove_profile_picture = data.get('remove_profile_picture', 'false').lower() == 'true'
 
                 logger.debug(f"Dados parseados (multipart): POST={dict(data)}, FILES={dict(files)}")
 
             elif request.content_type.startswith('application/json'):
-                # Mantém a lógica existente para JSON, caso você a use
-                data_json = json.loads(raw_body) # Usa raw_body aqui também
+                data_json = json.loads(raw_body)
                 bio = data_json.get('bio', user.bio or '')
                 username = data_json.get('username')
                 old_password = data_json.get('old_password')
                 new_password = data_json.get('new_password')
-                profile_picture = None # Não há upload de arquivo direto via JSON
+                profile_picture = None
                 remove_profile_picture = data_json.get('remove_profile_picture', False)
                 logger.debug(f"Dados parseados (JSON): {data_json}")
             else:
-                # Retorna erro se o Content-Type não for nem multipart/form-data nem application/json
                 logger.warning(f"Tipo de conteúdo inesperado para PATCH: {request.content_type}")
-                return JsonResponse({'error': 'Tipo de conteúdo não suportado para esta operação.'}, status=415) # 415 Unsupported Media Type
+                return JsonResponse({'error': 'Tipo de conteúdo não suportado para esta operação.'}, status=415)
 
             logger.debug(f"Dados processados: username={username!r}, profile_picture={profile_picture}, bio={bio!r}, old_password={old_password!r}, new_password={new_password!r}, remove_profile_picture={remove_profile_picture}")
 
