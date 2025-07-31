@@ -159,9 +159,15 @@ def profile_posts(request):
 # Removido @csrf_exempt
 def login_view(request):
     if request.method == 'POST':
-        data = json.loads(request.body)
-        username = data.get('username')
-        password = data.get('password')
+        # O Django e o DRF sabem como lidar com request.POST e request.body
+        # sem quebrar a validação do CSRF.
+        try:
+            data = json.loads(request.body)
+            username = data.get('username')
+            password = data.get('password')
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'JSON inválido'}, status=400)
+        
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
@@ -174,17 +180,29 @@ def login_view(request):
 # Removido @csrf_exempt
 def register_view(request):
     if request.method == 'POST':
-        data = json.loads(request.body)
-        username = data.get('username')
-        password = data.get('password')
-        email = data.get('email')
+        try:
+            data = json.loads(request.body)
+            username = data.get('username')
+            password = data.get('password')
+            email = data.get('email')
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'JSON inválido'}, status=400)
+
+        if not username or not password or not email:
+            return JsonResponse({'error': 'Todos os campos são obrigatórios.'}, status=400)
+
         if User.objects.filter(username=username).exists():
             logger.warning(f"Registro falhou: usuário {username} já existe")
             return JsonResponse({'error': 'Usuário já existe'}, status=400)
-        user = User.objects.create_user(username=username, password=password, email=email)
-        login(request, user)
-        logger.debug(f"Registro bem-sucedido: {username}")
-        return JsonResponse({'status': 'success', 'username': user.username})
+
+        try:
+            user = User.objects.create_user(username=username, password=password, email=email)
+            login(request, user)
+            logger.debug(f"Registro bem-sucedido: {username}")
+            return JsonResponse({'status': 'success', 'username': user.username})
+        except Exception as e:
+            logger.error(f"Erro ao criar usuário: {e}")
+            return JsonResponse({'error': 'Falha ao criar usuário.'}, status=500)
     return JsonResponse({'error': 'Método inválido'}, status=400)
 
 @never_cache
