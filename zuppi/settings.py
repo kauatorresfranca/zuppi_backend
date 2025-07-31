@@ -65,7 +65,7 @@ else:
 
 CORS_ALLOW_CREDENTIALS = True
 
-# >>> Adicione esta linha crucial para permitir os cabeçalhos do frontend! <<<
+# >>> Este é o bloco de CORS completo com todos os cabeçalhos que seu frontend envia. <<<
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -89,7 +89,7 @@ if ENVIRONMENT == 'production':
         'https://zuppi.vercel.app/',
         'https://zuppi-backend.onrender.com', # Adicionada para compatibilidade extra
     ]
-    # >>> ADIÇÕES CRUCIAIS PARA O COOKIE CSRF <<<
+    # >>> Este é o bloco de CSRF completo e correto para o seu ambiente. <<<
     CSRF_COOKIE_DOMAIN = 'zuppi.vercel.app' # Define o domínio para o cookie CSRF
     CSRF_COOKIE_SECURE = True # Garante que o cookie só é enviado via HTTPS
     CSRF_COOKIE_SAMESITE = 'None' # Permite envio cross-site (requer Secure=True)
@@ -98,10 +98,9 @@ else:
         'http://localhost:3000',
         'http://localhost:5173',
     ]
-    # >>> ADIÇÕES PARA AMBIENTE DE DESENVOLVIMENTO <<<
-    CSRF_COOKIE_DOMAIN = None # Permite que o Django defina o domínio automaticamente para localhost
-    CSRF_COOKIE_SECURE = False # Não precisa de HTTPS em desenvolvimento
-    CSRF_COOKIE_SAMESITE = 'Lax' # Ou 'None' com secure=True, mas Lax é mais seguro para localhost
+    CSRF_COOKIE_DOMAIN = None
+    CSRF_COOKIE_SECURE = False
+    CSRF_COOKIE_SAMESITE = 'Lax'
 
 ROOT_URLCONF = 'zuppi.urls'
 
