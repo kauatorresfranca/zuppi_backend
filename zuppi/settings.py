@@ -183,9 +183,9 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom user model
 AUTH_USER_MODEL = 'social.CustomUser'
 
-# Login URL
-# A linha 'LOGIN_URL = "/accounts/login/"' foi removida para evitar o redirecionamento
-# e retornar um 401 Unauthorized, comportamento ideal para APIs.
+# --- ALTERAÇÃO AQUI ---
+# A linha `LOGIN_URL` foi removida para evitar o redirecionamento.
+# Em APIs, o comportamento correto para acesso não autorizado é retornar um `401 Unauthorized`.
 
 # Logging configuration
 LOGGING = {
