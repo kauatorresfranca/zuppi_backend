@@ -1,6 +1,5 @@
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model, authenticate, login, logout
-from django.contrib.auth.decorators import login_required
 from django.http import JsonResponse
 from django.middleware.csrf import get_token
 from .models import Post, PostAction
@@ -20,6 +19,9 @@ logger = logging.getLogger(__name__)
 User = get_user_model()
 
 def post_list(request):
+    """
+    Retorna a lista de todos os posts. Acessível publicamente.
+    """
     posts = Post.objects.all().order_by('-created_at')
     data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count,
              'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count,
@@ -27,27 +29,45 @@ def post_list(request):
             for post in posts]
     return JsonResponse({'posts': data})
 
-@login_required
 def post_create(request):
+    """
+    Cria um novo post. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+    
     if request.method == 'POST':
-        data = json.loads(request.body)
-        text = data.get('text')
-        if text:
-            post = Post.objects.create(author=request.user, text=text)
-            logger.debug(f"Post criado: id={post.id}, autor={request.user.username}")
-            return JsonResponse({'id': post.id, 'text': post.text, 'author': request.user.username, 'created_at': post.created_at.isoformat()})
-        return JsonResponse({'error': 'Texto ausente'}, status=400)
+        try:
+            data = json.loads(request.body)
+            text = data.get('text')
+            if text:
+                post = Post.objects.create(author=request.user, text=text)
+                logger.debug(f"Post criado: id={post.id}, autor={request.user.username}")
+                return JsonResponse({'id': post.id, 'text': post.text, 'author': request.user.username, 'created_at': post.created_at.isoformat()})
+            return JsonResponse({'error': 'Texto ausente'}, status=400)
+        except json.JSONDecodeError:
+            return JsonResponse({'error': 'JSON inválido'}, status=400)
     return JsonResponse({'error': 'Método inválido'}, status=400)
 
-@login_required
 def post_actions(request, post_id):
+    """
+    Retorna as ações do usuário em um post. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     post = get_object_or_404(Post, id=post_id)
     actions = PostAction.objects.filter(user=request.user, post=post).values('action_type')
     logger.debug(f"Ações do post {post_id}: {list(actions)}")
     return JsonResponse({'actions': list(actions)})
 
-@login_required
 def post_like(request, post_id):
+    """
+    Adiciona ou remove um "like" de um post. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     post = get_object_or_404(Post, id=post_id)
     action = PostAction.objects.filter(user=request.user, post=post, action_type='like').first()
     if action:
@@ -60,8 +80,13 @@ def post_like(request, post_id):
     logger.debug(f"Like atualizado no post {post_id}: likes_count={post.likes_count}")
     return JsonResponse({'likes_count': post.likes_count, 'id': post.id})
 
-@login_required
 def post_repost(request, post_id):
+    """
+    Adiciona ou remove um "repost" de um post. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     post = get_object_or_404(Post, id=post_id)
     action = PostAction.objects.filter(user=request.user, post=post, action_type='repost').first()
     if action:
@@ -74,8 +99,13 @@ def post_repost(request, post_id):
     logger.debug(f"Repost atualizado no post {post_id}: reposts_count={post.reposts_count}")
     return JsonResponse({'reposts_count': post.reposts_count, 'id': post.id})
 
-@login_required
 def post_comment(request, post_id):
+    """
+    Adiciona ou remove um "comentário" de um post. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     post = get_object_or_404(Post, id=post_id)
     action = PostAction.objects.filter(user=request.user, post=post, action_type='comment').first()
     if action:
@@ -88,8 +118,13 @@ def post_comment(request, post_id):
     logger.debug(f"Comentário atualizado no post {post_id}: comments_count={post.comments_count}")
     return JsonResponse({'comments_count': post.comments_count, 'id': post.id})
 
-@login_required
 def post_share(request, post_id):
+    """
+    Adiciona ou remove um "compartilhamento" de um post. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     post = get_object_or_404(Post, id=post_id)
     action = PostAction.objects.filter(user=request.user, post=post, action_type='share').first()
     if action:
@@ -102,8 +137,13 @@ def post_share(request, post_id):
     logger.debug(f"Compartilhamento atualizado no post {post_id}: shares_count={post.shares_count}")
     return JsonResponse({'shares_count': post.shares_count, 'id': post.id})
 
-@login_required
 def feed_list(request):
+    """
+    Retorna o feed de posts dos usuários que o usuário logado segue. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     following_users = request.user.following.all()
     posts = Post.objects.filter(author__in=following_users).order_by('-created_at')
     data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count,
@@ -113,8 +153,13 @@ def feed_list(request):
     logger.debug(f"Feed response: {{'posts': {data}}}")
     return JsonResponse({'posts': data})
 
-@login_required
 def follow_user(request, user_id):
+    """
+    Segue ou deixa de seguir um usuário. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     user_to_follow = get_object_or_404(User, id=user_id)
     if user_to_follow != request.user:
         if request.user.following.filter(id=user_id).exists():
@@ -125,11 +170,19 @@ def follow_user(request, user_id):
     return JsonResponse({'status': 'updated', 'following_count': request.user.following.count()})
 
 def user_suggestions(request):
+    """
+    Retorna sugestões de usuários para seguir. Acessível publicamente.
+    """
     users = User.objects.exclude(id=request.user.id).values('id', 'username') if request.user.is_authenticated else User.objects.all().values('id', 'username')[:5]
     return JsonResponse({'suggestions': list(users)})
 
-@login_required
 def profile(request):
+    """
+    Retorna os dados do perfil do usuário logado. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     user = request.user
     profile_data = {
         'username': user.username,
@@ -146,8 +199,13 @@ def profile(request):
     logger.debug(f"Profile response: {profile_data}")
     return JsonResponse(profile_data)
 
-@login_required
 def profile_posts(request):
+    """
+    Retorna os posts do usuário logado. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     posts = Post.objects.filter(author=request.user).order_by('-created_at')
     data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count,
              'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count,
@@ -156,11 +214,11 @@ def profile_posts(request):
     logger.debug(f"Profile posts response: {{'posts': {data}}}")
     return JsonResponse({'posts': data})
 
-# Removido @csrf_exempt
 def login_view(request):
+    """
+    Gerencia o login do usuário.
+    """
     if request.method == 'POST':
-        # O Django e o DRF sabem como lidar com request.POST e request.body
-        # sem quebrar a validação do CSRF.
         try:
             data = json.loads(request.body)
             username = data.get('username')
@@ -177,10 +235,11 @@ def login_view(request):
         return JsonResponse({'error': 'Credenciais inválidas'}, status=401)
     return JsonResponse({'error': 'Método inválido'}, status=400)
 
-# Removido @csrf_exempt
 def register_view(request):
+    """
+    Gerencia o registro de novos usuários.
+    """
     if request.method == 'POST':
-        # Adicionei este log para depurar o erro 400
         logger.debug(f"Recebendo requisição POST para registro. Corpo bruto: {request.body.decode('utf-8')}")
         try:
             data = json.loads(request.body)
@@ -211,20 +270,33 @@ def register_view(request):
 
 @never_cache
 def get_csrf_token(request):
+    """
+    Retorna o token CSRF.
+    """
     token = get_token(request)
     logger.debug(f"CSRF token gerado: {token}")
     return JsonResponse({'csrfToken': token})
 
-# Removido @csrf_exempt
 def logout_view(request):
+    """
+    Gerencia o logout do usuário. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+        
     if request.method == 'POST':
         logout(request)
         logger.debug("Logout bem-sucedido")
         return JsonResponse({'status': 'success'})
     return JsonResponse({'error': 'Método inválido'}, status=400)
 
-@login_required
 def profile_update(request):
+    """
+    Atualiza o perfil do usuário. Requer autenticação.
+    """
+    if not request.user.is_authenticated:
+        return JsonResponse({'error': 'Não autenticado'}, status=401)
+
     if request.method == 'PATCH':
         user = request.user
         try:
