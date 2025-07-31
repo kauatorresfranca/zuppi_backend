@@ -78,6 +78,7 @@ CORS_ALLOW_HEADERS = [
     'x-requested-with',
     'cache-control',
     'pragma',
+    'expires',
 ]
 
 # CSRF settings
