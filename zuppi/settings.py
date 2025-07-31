@@ -65,6 +65,20 @@ else:
 
 CORS_ALLOW_CREDENTIALS = True
 
+# >>> Adicione esta linha crucial para permitir os cabeçalhos do frontend! <<<
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+    'cache-control',
+]
+
 # CSRF settings
 # Incluindo explicitamente ambas as variações (com e sem barra final) e o backend do Render
 if ENVIRONMENT == 'production':
@@ -86,7 +100,6 @@ else:
     CSRF_COOKIE_DOMAIN = None # Permite que o Django defina o domínio automaticamente para localhost
     CSRF_COOKIE_SECURE = False # Não precisa de HTTPS em desenvolvimento
     CSRF_COOKIE_SAMESITE = 'Lax' # Ou 'None' com secure=True, mas Lax é mais seguro para localhost
-
 
 ROOT_URLCONF = 'zuppi.urls'
 
