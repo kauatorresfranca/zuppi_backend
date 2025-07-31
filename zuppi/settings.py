@@ -20,7 +20,6 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-_um@@ac&hg&^o^c8p37
 DEBUG = ENVIRONMENT != 'production'
 
 # Allow Render's domain in production and localhost for development
-# CORREÇÃO: Removido 'https://' do ALLOWED_HOSTS para o Vercel URL.
 if ENVIRONMENT == 'production':
     ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'zuppi-backend.onrender.com', 'zuppi.vercel.app']
 else:
@@ -35,37 +34,37 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
-    'social',  # Your custom app
+    'social',
     'corsheaders',
 ]
 
 MIDDLEWARE = [
-    'corsheaders.middleware.CorsMiddleware',  # Must be first for CORS
+    'corsheaders.middleware.CorsMiddleware',
     'django.middleware.security.SecurityMiddleware',
-    'whitenoise.middleware.WhiteNoiseMiddleware',  # For serving static files
+    'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware', # Mantenha esta linha aqui, ela é que exige o token CSRF
+    'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
 # CORS settings for React frontend
-# USANDO CORS_ALLOWED_ORIGIN_REGEXES para flexibilidade com a barra final
-if ENVIRONMENT == 'production':
-    CORS_ALLOWED_ORIGIN_REGEXES = [
-        r"^https:\/\/zuppi\.vercel\.app\/?$", # Permite com ou sem barra final (usando /?)
-    ]
-else:
-    CORS_ALLOWED_ORIGIN_REGEXES = [
-        r"^http:\/\/localhost:3000\/?$",
-        r"^http:\/\/localhost:5173\/?$",
-    ]
-
 CORS_ALLOW_CREDENTIALS = True
 
-# >>> Este é o bloco de CORS completo com todos os cabeçalhos que seu frontend envia. <<<
+# >>> ALTERADO: Usando CORS_ALLOWED_ORIGINS para maior confiabilidade. <<<
+if ENVIRONMENT == 'production':
+    CORS_ALLOWED_ORIGINS = [
+        "https://zuppi.vercel.app",
+    ]
+else:
+    CORS_ALLOWED_ORIGINS = [
+        "http://localhost:3000",
+        "http://localhost:5173",
+    ]
+
+# >>> Bloco de CORS completo com todos os cabeçalhos. <<<
 CORS_ALLOW_HEADERS = [
     'accept',
     'accept-encoding',
@@ -82,17 +81,15 @@ CORS_ALLOW_HEADERS = [
 ]
 
 # CSRF settings
-# Incluindo explicitamente ambas as variações (com e sem barra final) e o backend do Render
 if ENVIRONMENT == 'production':
     CSRF_TRUSTED_ORIGINS = [
         'https://zuppi.vercel.app',
         'https://zuppi.vercel.app/',
-        'https://zuppi-backend.onrender.com', # Adicionada para compatibilidade extra
+        'https://zuppi-backend.onrender.com',
     ]
-    # >>> Este é o bloco de CSRF completo e correto para o seu ambiente. <<<
-    CSRF_COOKIE_DOMAIN = 'zuppi.vercel.app' # Define o domínio para o cookie CSRF
-    CSRF_COOKIE_SECURE = True # Garante que o cookie só é enviado via HTTPS
-    CSRF_COOKIE_SAMESITE = 'None' # Permite envio cross-site (requer Secure=True)
+    CSRF_COOKIE_DOMAIN = 'zuppi.vercel.app'
+    CSRF_COOKIE_SECURE = True
+    CSRF_COOKIE_SAMESITE = 'None'
 else:
     CSRF_TRUSTED_ORIGINS = [
         'http://localhost:3000',
