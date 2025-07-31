@@ -183,9 +183,10 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom user model
 AUTH_USER_MODEL = 'social.CustomUser'
 
-# --- ALTERAÇÃO AQUI ---
-# A linha `LOGIN_URL` foi removida para evitar o redirecionamento.
-# Em APIs, o comportamento correto para acesso não autorizado é retornar um `401 Unauthorized`.
+# Solução final para o erro 500:
+# Força o Django a não usar uma URL de login, fazendo com que ele retorne um 401
+# Unauthorized para rotas protegidas, que é o comportamento esperado para uma API.
+LOGIN_URL = None
 
 # Logging configuration
 LOGGING = {
