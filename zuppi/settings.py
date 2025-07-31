@@ -85,7 +85,6 @@ if ENVIRONMENT == 'production':
         'https://zuppi.vercel.app/',
         'https://zuppi-backend.onrender.com',
     ]
-    # >>> ALTERADO: CSRF_COOKIE_DOMAIN foi removido aqui. <<<
     CSRF_COOKIE_SECURE = True
     CSRF_COOKIE_SAMESITE = 'None'
 else:
@@ -185,7 +184,8 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'social.CustomUser'
 
 # Login URL
-LOGIN_URL = '/accounts/login/'
+# A linha 'LOGIN_URL = "/accounts/login/"' foi removida para evitar o redirecionamento
+# e retornar um 401 Unauthorized, comportamento ideal para APIs.
 
 # Logging configuration
 LOGGING = {
