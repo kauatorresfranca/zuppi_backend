@@ -271,24 +271,21 @@ def register_view(request):
 @never_cache
 def get_csrf_token(request):
     """
-    Retorna o token CSRF.
+    Retorna o token CSRF e define o cookie csrftoken.
     """
-    token = get_token(request)
-    logger.debug(f"CSRF token gerado: {token}")
-    return JsonResponse({'csrfToken': token})
-
-def logout_view(request):
-    """
-    Gerencia o logout do usuário. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'error': 'Não autenticado'}, status=401)
-        
-    if request.method == 'POST':
-        logout(request)
-        logger.debug("Logout bem-sucedido")
-        return JsonResponse({'status': 'success'})
-    return JsonResponse({'error': 'Método inválido'}, status=400)
+    token = get_token(request)  # Isso também define o cookie csrftoken
+    response = JsonResponse({'csrfToken': token})
+    # Explicitamente garantir que o cookie seja enviado
+    response.set_cookie(
+        'csrftoken',
+        token,
+        max_age=31449600,  # 1 ano
+        secure=True,  # Apenas HTTPS
+        httponly=False,  # Permitir leitura por JavaScript
+        samesite='None'  # Permitir cross-origin
+    )
+    logger.debug(f"CSRF token gerado e cookie definido: {token}")
+    return response
 
 def profile_update(request):
     """
