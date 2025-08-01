@@ -19,9 +19,12 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-_um@@ac&hg&^o^c8p37
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = ENVIRONMENT != 'production'
 
-# Allow Render's domain in production and localhost for development
+# Allowed Hosts
 if ENVIRONMENT == 'production':
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1', 'zuppi-backend.onrender.com', 'zuppi.vercel.app']
+    ALLOWED_HOSTS = [
+        'zuppi-backend.onrender.com', 
+        'zuppi.vercel.app'
+    ]
 else:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
 
@@ -53,30 +56,21 @@ MIDDLEWARE = [
 # CORS settings for React frontend
 CORS_ALLOW_CREDENTIALS = True
 
+# Permite origens do Vercel e Render dinamicamente
+# Em ambientes de produção, é mais seguro especificar os domínios
 if ENVIRONMENT == 'production':
     CORS_ALLOWED_ORIGINS = [
-        "https://zuppi.vercel.app",
+        'https://zuppi.vercel.app',
     ]
+    # Usar regex para ser mais flexível com subdomínios, se necessário
+    # CORS_ALLOWED_ORIGIN_REGEXES = [
+    #     r'^https://zuppi\.vercel\.app$',
+    # ]
 else:
     CORS_ALLOWED_ORIGINS = [
         "http://localhost:3000",
         "http://localhost:5173",
     ]
-
-CORS_ALLOW_HEADERS = [
-    'accept',
-    'accept-encoding',
-    'authorization',
-    'content-type',
-    'dnt',
-    'origin',
-    'user-agent',
-    'x-csrftoken',
-    'x-requested-with',
-    'cache-control',
-    'pragma',
-    'expires',
-]
 
 # CSRF settings
 if ENVIRONMENT == 'production':
@@ -95,10 +89,7 @@ else:
     CSRF_COOKIE_SECURE = False
     CSRF_COOKIE_SAMESITE = 'Lax'
 
-# --- Configurações de cookies para produção ---
-# Essencial para permitir que o frontend e backend em domínios diferentes
-# compartilhem cookies de sessão com segurança.
-# A partir do Chrome 80, SameSite=None requer Secure=True.
+# Configurações de cookies para produção
 if ENVIRONMENT == 'production':
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_SAMESITE = 'None'
