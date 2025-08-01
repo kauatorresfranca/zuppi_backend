@@ -203,3 +203,5 @@ LOGGING = {
         'level': 'INFO' if ENVIRONMENT == 'production' else 'DEBUG',
     },
 }
+
+CSRF_COOKIE_HTTPONLY = False
