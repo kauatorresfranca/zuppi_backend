@@ -82,7 +82,6 @@ CORS_ALLOW_HEADERS = [
 if ENVIRONMENT == 'production':
     CSRF_TRUSTED_ORIGINS = [
         'https://zuppi.vercel.app',
-        'https://zuppi.vercel.app/',
         'https://zuppi-backend.onrender.com',
     ]
     CSRF_COOKIE_SECURE = True
@@ -95,6 +94,19 @@ else:
     CSRF_COOKIE_DOMAIN = None
     CSRF_COOKIE_SECURE = False
     CSRF_COOKIE_SAMESITE = 'Lax'
+
+# --- Configurações de cookies para produção ---
+# Essencial para permitir que o frontend e backend em domínios diferentes
+# compartilhem cookies de sessão com segurança.
+# A partir do Chrome 80, SameSite=None requer Secure=True.
+if ENVIRONMENT == 'production':
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = 'None'
+else:
+    # Em ambiente de desenvolvimento, essas configurações podem ser mais flexíveis
+    SESSION_COOKIE_SECURE = False
+    SESSION_COOKIE_SAMESITE = 'Lax'
+
 
 ROOT_URLCONF = 'zuppi.urls'
 
@@ -183,9 +195,7 @@ DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 # Custom user model
 AUTH_USER_MODEL = 'social.CustomUser'
 
-# Solução final para o erro 500:
-# Força o Django a não usar uma URL de login, fazendo com que ele retorne um 401
-# Unauthorized para rotas protegidas, que é o comportamento esperado para uma API.
+# Solução para o erro 500 do login.
 LOGIN_URL = None
 
 # Logging configuration
