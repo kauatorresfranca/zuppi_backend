@@ -5,8 +5,8 @@ from django.conf import settings
 class CustomUser(AbstractUser):
     bio = models.TextField(blank=True, null=True)
     location = models.CharField(max_length=100, blank=True, null=True)
-    profile_picture = models.ImageField(upload_to='profile_pics/', blank=True, null=True)
-    cover_image = models.ImageField(upload_to='cover_images/', blank=True, null=True)
+    profile_picture = models.URLField(blank=True, null=True)  # Changed to URLField for Cloudinary URLs
+    cover_image = models.URLField(blank=True, null=True)     # Changed to URLField for Cloudinary URLs
     following = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='followers_set')
 
     groups = models.ManyToManyField(
@@ -26,7 +26,7 @@ class CustomUser(AbstractUser):
 class Post(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
     text = models.TextField()
-    image = models.ImageField(upload_to='post_pics/', blank=True, null=True)  # Added for post image uploads
+    image = models.URLField(blank=True, null=True)  # Changed to URLField for Cloudinary URLs
     created_at = models.DateTimeField(auto_now_add=True)
     likes_count = models.PositiveIntegerField(default=0)
     reposts_count = models.PositiveIntegerField(default=0)

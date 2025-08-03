@@ -13,6 +13,7 @@ from io import BytesIO
 from django.utils.text import slugify
 import os
 import cloudinary.uploader
+import time
 
 logger = logging.getLogger(__name__)
 
@@ -65,7 +66,8 @@ def post_create(request):
                         image,
                         folder="post_pics",
                         public_id=sanitized_name,
-                        overwrite=True
+                        overwrite=True,
+                        timestamp=int(time.time())
                     )
                     post.image = upload_result['secure_url']
                     logger.debug(f"Post created with image uploaded to Cloudinary: id={post.id}, url={post.image}")
@@ -98,7 +100,7 @@ def post_create(request):
             return JsonResponse({'error': f'Falha ao processar dados de formulário: {e}'}, status=400)
         except Exception as e:
             logger.error(f"Erro ao criar post: {e}")
-            return JsonResponse({'error': 'Erro ao criar post'}, status=400)
+            return JsonResponse({'error': str(e)}, status=400)
     return JsonResponse({'error': 'Método inválido'}, status=400)
 
 def post_actions(request, post_id):
@@ -115,7 +117,7 @@ def post_actions(request, post_id):
 
 def post_like(request, post_id):
     """
-    Adiciona ou remove um "like" de um post. Requer autenticação.
+    Adiciona ou remove um 'like' de um post. Requer autenticação.
     """
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Não autenticado'}, status=401)
@@ -134,7 +136,7 @@ def post_like(request, post_id):
 
 def post_repost(request, post_id):
     """
-    Adiciona ou remove um "repost" de um post. Requer autenticação.
+    Adiciona ou remove um 'repost' de um post. Requer autenticação.
     """
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Não autenticado'}, status=401)
@@ -153,7 +155,7 @@ def post_repost(request, post_id):
 
 def post_comment(request, post_id):
     """
-    Adiciona ou remove um "comentário" de um post. Requer autenticação.
+    Adiciona ou remove um 'comentário' de um post. Requer autenticação.
     """
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Não autenticado'}, status=401)
@@ -172,7 +174,7 @@ def post_comment(request, post_id):
 
 def post_share(request, post_id):
     """
-    Adiciona ou remove um "compartilhamento" de um post. Requer autenticação.
+    Adiciona ou remove um 'compartilhamento' de um post. Requer autenticação.
     """
     if not request.user.is_authenticated:
         return JsonResponse({'error': 'Não autenticado'}, status=401)
@@ -251,8 +253,8 @@ def profile(request):
         'handle': user.username.lower(),
         'bio': user.bio or '',
         'location': user.location or '',
-        'profile_picture': user.profile_picture.url if user.profile_picture else '',
-        'cover_image': user.cover_image.url if user.cover_image else '',
+        'profile_picture': user.profile_picture if user.profile_picture else '',
+        'cover_image': user.cover_image if user.cover_image else '',
         'followers': user.followers_set.count(),
         'following': user.following.count(),
         'posts_count': user.posts.count(),
@@ -426,7 +428,8 @@ def profile_update(request):
                         profile_picture,
                         folder="profile_pics",
                         public_id=sanitized_name,
-                        overwrite=True
+                        overwrite=True,
+                        timestamp=int(time.time())
                     )
                     user.profile_picture = upload_result['secure_url']
                     logger.debug(f"Profile picture uploaded to Cloudinary: url={user.profile_picture}")
