@@ -13,6 +13,7 @@ from io import BytesIO
 from django.utils.text import slugify
 import os
 import cloudinary.uploader
+import cloudinary
 import time
 
 logger = logging.getLogger(__name__)
@@ -62,12 +63,22 @@ def post_create(request):
                 if image:
                     name, ext = os.path.splitext(image.name)
                     sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
+                    current_timestamp = int(time.time())
+                    logger.debug(f"Generated timestamp: {current_timestamp} for upload (system time: {time.ctime()})")
+                    if current_timestamp < 1700000000:  # Aproximadamente 2023, um valor mínimo razoável
+                        return JsonResponse({'error': 'Timestamp inválido, verifique o relógio do sistema'}, status=400)
+                    cloudinary.config(
+                        cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+                        api_key=os.getenv('CLOUDINARY_API_KEY'),
+                        api_secret=os.getenv('CLOUDINARY_API_SECRET')
+                    )
+                    logger.debug(f"Cloudinary config: cloud_name={os.getenv('CLOUDINARY_CLOUD_NAME')}, api_key={os.getenv('CLOUDINARY_API_KEY')}, api_secret=***")
                     upload_result = cloudinary.uploader.upload(
                         image,
                         folder="post_pics",
                         public_id=sanitized_name,
                         overwrite=True,
-                        timestamp=int(time.time())
+                        timestamp=current_timestamp
                     )
                     post.image = upload_result['secure_url']
                     logger.debug(f"Post created with image uploaded to Cloudinary: id={post.id}, url={post.image}")
@@ -424,12 +435,22 @@ def profile_update(request):
                 if profile_picture:
                     name, ext = os.path.splitext(profile_picture.name)
                     sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
+                    current_timestamp = int(time.time())
+                    logger.debug(f"Generated timestamp: {current_timestamp} for upload (system time: {time.ctime()})")
+                    if current_timestamp < 1700000000:  # Aproximadamente 2023, um valor mínimo razoável
+                        return JsonResponse({'error': 'Timestamp inválido, verifique o relógio do sistema'}, status=400)
+                    cloudinary.config(
+                        cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+                        api_key=os.getenv('CLOUDINARY_API_KEY'),
+                        api_secret=os.getenv('CLOUDINARY_API_SECRET')
+                    )
+                    logger.debug(f"Cloudinary config: cloud_name={os.getenv('CLOUDINARY_CLOUD_NAME')}, api_key={os.getenv('CLOUDINARY_API_KEY')}, api_secret=***")
                     upload_result = cloudinary.uploader.upload(
                         profile_picture,
                         folder="profile_pics",
                         public_id=sanitized_name,
                         overwrite=True,
-                        timestamp=int(time.time())
+                        timestamp=current_timestamp
                     )
                     user.profile_picture = upload_result['secure_url']
                     logger.debug(f"Profile picture uploaded to Cloudinary: url={user.profile_picture}")
