@@ -26,6 +26,7 @@ class CustomUser(AbstractUser):
 class Post(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
     text = models.TextField()
+    image = models.ImageField(upload_to='post_pics/', blank=True, null=True)  # Added for post image uploads
     created_at = models.DateTimeField(auto_now_add=True)
     likes_count = models.PositiveIntegerField(default=0)
     reposts_count = models.PositiveIntegerField(default=0)

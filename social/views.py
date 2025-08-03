@@ -10,6 +10,8 @@ from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 from rest_framework.exceptions import ParseError
 from io import BytesIO
+from django.utils.text import slugify
+import os
 
 logger = logging.getLogger(__name__)
 
@@ -20,10 +22,20 @@ def post_list(request):
     Retorna a lista de todos os posts. Acessível publicamente.
     """
     posts = Post.objects.all().order_by('-created_at')
-    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count,
-             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count,
-             'created_at': post.created_at.isoformat()}
-            for post in posts]
+    data = [
+        {
+            'id': post.id,
+            'text': post.text,
+            'author': post.author.username,
+            'likes_count': post.likes_count,
+            'reposts_count': post.reposts_count,
+            'comments_count': post.comments_count,
+            'shares_count': post.shares_count,
+            'created_at': post.created_at.isoformat(),
+            'image': post.image.url if post.image else ''
+        }
+        for post in posts
+    ]
     return JsonResponse({'posts': data})
 
 def post_create(request):
@@ -35,15 +47,54 @@ def post_create(request):
     
     if request.method == 'POST':
         try:
-            data = json.loads(request.body)
-            text = data.get('text')
-            if text:
+            if request.content_type.startswith('multipart/form-data'):
+                drf_request = Request(request, parsers=[MultiPartParser()])
+                data = drf_request.data
+                files = drf_request.FILES
+                text = data.get('text')
+                image = files.get('image')
+                if not text:
+                    return JsonResponse({'error': 'Texto ausente'}, status=400)
                 post = Post.objects.create(author=request.user, text=text)
-                logger.debug(f"Post criado: id={post.id}, autor={request.user.username}")
-                return JsonResponse({'id': post.id, 'text': post.text, 'author': request.user.username, 'created_at': post.created_at.isoformat()})
-            return JsonResponse({'error': 'Texto ausente'}, status=400)
+                if image:
+                    original_name = image.name
+                    name, ext = os.path.splitext(original_name)
+                    sanitized_name = f"{slugify(name)}{ext.lower()}"
+                    image.name = sanitized_name
+                    post.image = image
+                    post.save()
+                    logger.debug(f"Post criado com imagem: id={post.id}, autor={request.user.username}, imagem={post.image.url}")
+                else:
+                    logger.debug(f"Post criado: id={post.id}, autor={request.user.username}")
+                return JsonResponse({
+                    'id': post.id,
+                    'text': post.text,
+                    'author': request.user.username,
+                    'image': post.image.url if post.image else '',
+                    'created_at': post.created_at.isoformat()
+                })
+            else:
+                data = json.loads(request.body)
+                text = data.get('text')
+                if text:
+                    post = Post.objects.create(author=request.user, text=text)
+                    logger.debug(f"Post criado: id={post.id}, autor={request.user.username}")
+                    return JsonResponse({
+                        'id': post.id,
+                        'text': post.text,
+                        'author': request.user.username,
+                        'image': '',
+                        'created_at': post.created_at.isoformat()
+                    })
+                return JsonResponse({'error': 'Texto ausente'}, status=400)
         except json.JSONDecodeError:
             return JsonResponse({'error': 'JSON inválido'}, status=400)
+        except ParseError as e:
+            logger.error(f"Erro de parsing de multipart/form-data: {e}")
+            return JsonResponse({'error': f'Falha ao processar dados de formulário: {e}'}, status=400)
+        except Exception as e:
+            logger.error(f"Erro ao criar post: {e}")
+            return JsonResponse({'error': 'Erro ao criar post'}, status=400)
     return JsonResponse({'error': 'Método inválido'}, status=400)
 
 def post_actions(request, post_id):
@@ -143,10 +194,20 @@ def feed_list(request):
 
     following_users = request.user.following.all()
     posts = Post.objects.filter(author__in=following_users).order_by('-created_at')
-    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count,
-             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count,
-             'created_at': post.created_at.isoformat()}
-            for post in posts]
+    data = [
+        {
+            'id': post.id,
+            'text': post.text,
+            'author': post.author.username,
+            'likes_count': post.likes_count,
+            'reposts_count': post.reposts_count,
+            'comments_count': post.comments_count,
+            'shares_count': post.shares_count,
+            'image': post.image.url if post.image else '',
+            'created_at': post.created_at.isoformat()
+        }
+        for post in posts
+    ]
     logger.debug(f"Feed response: {{'posts': {data}}}")
     return JsonResponse({'posts': data})
 
@@ -191,7 +252,7 @@ def profile(request):
         'followers': user.followers_set.count(),
         'following': user.following.count(),
         'posts_count': user.posts.count(),
-        'following': [user.id for user in user.following.all()]
+        'following': [u.id for u in user.following.all()]
     }
     logger.debug(f"Profile response: {profile_data}")
     return JsonResponse(profile_data)
@@ -204,10 +265,20 @@ def profile_posts(request):
         return JsonResponse({'error': 'Não autenticado'}, status=401)
 
     posts = Post.objects.filter(author=request.user).order_by('-created_at')
-    data = [{'id': post.id, 'text': post.text, 'author': post.author.username, 'likes_count': post.likes_count,
-             'reposts_count': post.reposts_count, 'comments_count': post.comments_count, 'shares_count': post.shares_count,
-             'created_at': post.created_at.isoformat()}
-            for post in posts]
+    data = [
+        {
+            'id': post.id,
+            'text': post.text,
+            'author': post.author.username,
+            'likes_count': post.likes_count,
+            'reposts_count': post.reposts_count,
+            'comments_count': post.comments_count,
+            'shares_count': post.shares_count,
+            'image': post.image.url if post.image else '',
+            'created_at': post.created_at.isoformat()
+        }
+        for post in posts
+    ]
     logger.debug(f"Profile posts response: {{'posts': {data}}}")
     return JsonResponse({'posts': data})
 
@@ -345,6 +416,14 @@ def profile_update(request):
 
                 logger.debug(f"Dados parseados (multipart): POST={dict(data)}, FILES={dict(files)}")
 
+                # Sanitizar o nome do arquivo da imagem, se presente
+                if profile_picture:
+                    original_name = profile_picture.name
+                    name, ext = os.path.splitext(original_name)
+                    sanitized_name = f"{slugify(name)}{ext.lower()}"
+                    profile_picture.name = sanitized_name
+                    logger.debug(f"Nome do arquivo sanitizado: {original_name} -> {sanitized_name}")
+
             elif request.content_type.startswith('application/json'):
                 data_json = json.loads(raw_body)
                 bio = data_json.get('bio', user.bio or '')
@@ -380,8 +459,10 @@ def profile_update(request):
             user.bio = bio
             if profile_picture:
                 user.profile_picture = profile_picture
+                logger.info(f"Imagem de perfil atualizada para: {user.profile_picture.url if user.profile_picture else 'Nenhuma imagem'}")
             elif remove_profile_picture:
                 user.profile_picture = None
+                logger.info("Imagem de perfil removida")
             user.save()
 
             logger.debug(f"Salvo: username={user.username}, profile_picture={user.profile_picture.url if user.profile_picture else ''}")
@@ -392,6 +473,7 @@ def profile_update(request):
                 'bio': user.bio or '',
                 'location': user.location or '',
                 'profile_picture': user.profile_picture.url if user.profile_picture else '',
+                'cover_image': user.cover_image.url if user.cover_image else ''
             })
         except Exception as e:
             logger.error(f"Erro ao atualizar perfil: {e.__class__.__name__}: {e}")
