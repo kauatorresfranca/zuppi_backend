@@ -13,6 +13,7 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-_um@@ac&hg&^o^c8p37
 DEBUG = ENVIRONMENT != 'production'
 
 if ENVIRONMENT == 'production':
+    # Certifique-se de que o nome de domínio do backend está correto aqui
     ALLOWED_HOSTS = ['zuppi-backend.onrender.com', 'zuppi.vercel.app']
 else:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
@@ -43,26 +44,25 @@ MIDDLEWARE = [
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
+# Configurações CORS
 CORS_ALLOW_CREDENTIALS = True
 if ENVIRONMENT == 'production':
     CORS_ALLOWED_ORIGINS = ['https://zuppi.vercel.app']
 else:
     CORS_ALLOWED_ORIGINS = ['http://localhost:3000', 'http://localhost:5173']
 
+# Configurações CSRF e de Sessão para Produção vs. Desenvolvimento
 if ENVIRONMENT == 'production':
     CSRF_TRUSTED_ORIGINS = ['https://zuppi.vercel.app', 'https://zuppi-backend.onrender.com']
     CSRF_COOKIE_SECURE = True
     CSRF_COOKIE_SAMESITE = 'None'
+    SESSION_COOKIE_SECURE = True
+    SESSION_COOKIE_SAMESITE = 'None'
 else:
     CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://localhost:5173']
     CSRF_COOKIE_DOMAIN = None
     CSRF_COOKIE_SECURE = False
     CSRF_COOKIE_SAMESITE = 'Lax'
-
-if ENVIRONMENT == 'production':
-    SESSION_COOKIE_SECURE = True
-    SESSION_COOKIE_SAMESITE = 'None'
-else:
     SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_SAMESITE = 'Lax'
 
@@ -137,8 +137,8 @@ CLOUDINARY_STORAGE = {
     'API_SECRET': os.getenv('CLOUDINARY_API_SECRET'),
 }
 DEFAULT_FILE_STORAGE = 'cloudinary_storage.storage.MediaCloudinaryStorage'
-MEDIA_URL = '/media/'  # Mantido para compatibilidade
-MEDIA_ROOT = os.path.join(BASE_DIR, 'media')  # Usado apenas localmente
+MEDIA_URL = '/media/'
+MEDIA_ROOT = os.path.join(BASE_DIR, 'media')
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 AUTH_USER_MODEL = 'social.CustomUser'
@@ -158,4 +158,5 @@ LOGGING = {
     },
 }
 
+# CSRF_COOKIE_HTTPONLY deve ser False para que o JavaScript possa lê-lo
 CSRF_COOKIE_HTTPONLY = False

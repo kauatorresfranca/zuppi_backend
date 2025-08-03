@@ -65,7 +65,7 @@ def post_create(request):
                     sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
                     current_timestamp = int(time.time())
                     logger.debug(f"Generated timestamp: {current_timestamp} for upload (system time: {time.ctime()})")
-                    if current_timestamp < 1700000000:  # Aproximadamente 2023, um valor mínimo razoável
+                    if current_timestamp < 1700000000:
                         return JsonResponse({'error': 'Timestamp inválido, verifique o relógio do sistema'}, status=400)
                     cloudinary.config(
                         cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
@@ -269,7 +269,6 @@ def profile(request):
         'followers': user.followers_set.count(),
         'following': user.following.count(),
         'posts_count': user.posts.count(),
-        'following': [u.id for u in user.following.all()]
     }
     logger.debug(f"Profile response: {profile_data}")
     return JsonResponse(profile_data)
@@ -356,18 +355,34 @@ def register_view(request):
 @never_cache
 def get_csrf_token(request):
     """
-    Retorna o token CSRF e define o cookie csrftoken.
+    Retorna o token CSRF e define o cookie csrftoken com base no ambiente.
     """
     token = get_token(request)
     response = JsonResponse({'csrfToken': token})
-    response.set_cookie(
-        'csrftoken',
-        token,
-        max_age=31449600,
-        secure=True,
-        httponly=False,
-        samesite='None'
-    )
+
+    # A lógica foi transferida para o settings.py, mas a view pode ser mais explícita
+    # para garantir o comportamento em tempo de execução.
+    if os.getenv('ENVIRONMENT') == 'production':
+        # Em produção, com HTTPS, o cookie precisa ser seguro e 'None'
+        response.set_cookie(
+            'csrftoken',
+            token,
+            max_age=31449600,
+            secure=True,
+            httponly=False,
+            samesite='None'
+        )
+    else:
+        # Em desenvolvimento, o cookie pode ser inseguro e 'Lax'
+        response.set_cookie(
+            'csrftoken',
+            token,
+            max_age=31449600,
+            secure=False,
+            httponly=False,
+            samesite='Lax'
+        )
+
     logger.debug(f"CSRF token gerado e cookie definido: {token}")
     return response
 
@@ -437,7 +452,7 @@ def profile_update(request):
                     sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
                     current_timestamp = int(time.time())
                     logger.debug(f"Generated timestamp: {current_timestamp} for upload (system time: {time.ctime()})")
-                    if current_timestamp < 1700000000:  # Aproximadamente 2023, um valor mínimo razoável
+                    if current_timestamp < 1700000000:
                         return JsonResponse({'error': 'Timestamp inválido, verifique o relógio do sistema'}, status=400)
                     cloudinary.config(
                         cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
@@ -466,7 +481,7 @@ def profile_update(request):
                 logger.warning(f"Tipo de conteúdo inesperado para PATCH: {request.content_type}")
                 return JsonResponse({'error': 'Tipo de conteúdo não suportado para esta operação.'}, status=415)
 
-            logger.debug(f"Dados processados: username={username!r}, profile_picture={profile_picture}, bio={bio!r}, old_password={old_password!r}, new_password={new_password!r}, remove_profile_picture={remove_profile_picture}")
+            logger.debug(f"Dados processados: username={username!r}, profile_picture={'sim' if profile_picture else 'não'}, bio={bio!r}, old_password={old_password!r}, new_password={new_password!r}, remove_profile_picture={remove_profile_picture}")
 
             if not username:
                 logger.warning("Username vazio ou não fornecido")
