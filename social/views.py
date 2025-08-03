@@ -12,6 +12,7 @@ from rest_framework.exceptions import ParseError
 from io import BytesIO
 from django.utils.text import slugify
 import os
+import cloudinary.uploader
 
 logger = logging.getLogger(__name__)
 
@@ -32,7 +33,7 @@ def post_list(request):
             'comments_count': post.comments_count,
             'shares_count': post.shares_count,
             'created_at': post.created_at.isoformat(),
-            'image': post.image.url if post.image else ''
+            'image': post.image if post.image else ''
         }
         for post in posts
     ]
@@ -53,24 +54,27 @@ def post_create(request):
                 files = drf_request.FILES
                 text = data.get('text')
                 image = files.get('image')
-                if not text:
-                    return JsonResponse({'error': 'Texto ausente'}, status=400)
-                post = Post.objects.create(author=request.user, text=text)
+                if not text and not image:
+                    return JsonResponse({'error': 'Post must have text or an image'}, status=400)
+
+                post = Post(author=request.user, text=text if text else '')
                 if image:
-                    original_name = image.name
-                    name, ext = os.path.splitext(original_name)
-                    sanitized_name = f"{slugify(name)}{ext.lower()}"
-                    image.name = sanitized_name
-                    post.image = image
-                    post.save()
-                    logger.debug(f"Post criado com imagem: id={post.id}, autor={request.user.username}, imagem={post.image.url}")
-                else:
-                    logger.debug(f"Post criado: id={post.id}, autor={request.user.username}")
+                    name, ext = os.path.splitext(image.name)
+                    sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
+                    upload_result = cloudinary.uploader.upload(
+                        image,
+                        folder="post_pics",
+                        public_id=sanitized_name,
+                        overwrite=True
+                    )
+                    post.image = upload_result['secure_url']
+                    logger.debug(f"Post created with image uploaded to Cloudinary: id={post.id}, url={post.image}")
+                post.save()
                 return JsonResponse({
                     'id': post.id,
                     'text': post.text,
                     'author': request.user.username,
-                    'image': post.image.url if post.image else '',
+                    'image': post.image if post.image else '',
                     'created_at': post.created_at.isoformat()
                 })
             else:
@@ -78,7 +82,7 @@ def post_create(request):
                 text = data.get('text')
                 if text:
                     post = Post.objects.create(author=request.user, text=text)
-                    logger.debug(f"Post criado: id={post.id}, autor={request.user.username}")
+                    logger.debug(f"Post created: id={post.id}, author={request.user.username}")
                     return JsonResponse({
                         'id': post.id,
                         'text': post.text,
@@ -203,7 +207,7 @@ def feed_list(request):
             'reposts_count': post.reposts_count,
             'comments_count': post.comments_count,
             'shares_count': post.shares_count,
-            'image': post.image.url if post.image else '',
+            'image': post.image if post.image else '',
             'created_at': post.created_at.isoformat()
         }
         for post in posts
@@ -247,8 +251,8 @@ def profile(request):
         'handle': user.username.lower(),
         'bio': user.bio or '',
         'location': user.location or '',
-        'profile_picture': user.profile_picture.url if user.profile_picture else '',
-        'cover_image': user.cover_image.url if user.cover_image else '',
+        'profile_picture': user.profile_picture if user.profile_picture else '',
+        'cover_image': user.cover_image if user.cover_image else '',
         'followers': user.followers_set.count(),
         'following': user.following.count(),
         'posts_count': user.posts.count(),
@@ -274,7 +278,7 @@ def profile_posts(request):
             'reposts_count': post.reposts_count,
             'comments_count': post.comments_count,
             'shares_count': post.shares_count,
-            'image': post.image.url if post.image else '',
+            'image': post.image if post.image else '',
             'created_at': post.created_at.isoformat()
         }
         for post in posts
@@ -399,7 +403,6 @@ def profile_update(request):
                     drf_request = Request(request, parsers=[MultiPartParser()])
                     data = drf_request.data
                     files = drf_request.FILES
-
                 except ParseError as e:
                     logger.error(f"Erro de parsing de multipart/form-data com DRF MultiPartParser: {e}")
                     return JsonResponse({'error': f'Falha ao processar dados de formulário: {e}'}, status=400)
@@ -416,13 +419,17 @@ def profile_update(request):
 
                 logger.debug(f"Dados parseados (multipart): POST={dict(data)}, FILES={dict(files)}")
 
-                # Sanitizar o nome do arquivo da imagem, se presente
                 if profile_picture:
-                    original_name = profile_picture.name
-                    name, ext = os.path.splitext(original_name)
-                    sanitized_name = f"{slugify(name)}{ext.lower()}"
-                    profile_picture.name = sanitized_name
-                    logger.debug(f"Nome do arquivo sanitizado: {original_name} -> {sanitized_name}")
+                    name, ext = os.path.splitext(profile_picture.name)
+                    sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
+                    upload_result = cloudinary.uploader.upload(
+                        profile_picture,
+                        folder="profile_pics",
+                        public_id=sanitized_name,
+                        overwrite=True
+                    )
+                    user.profile_picture = upload_result['secure_url']
+                    logger.debug(f"Profile picture uploaded to Cloudinary: url={user.profile_picture}")
 
             elif request.content_type.startswith('application/json'):
                 data_json = json.loads(raw_body)
@@ -430,9 +437,7 @@ def profile_update(request):
                 username = data_json.get('username')
                 old_password = data_json.get('old_password')
                 new_password = data_json.get('new_password')
-                profile_picture = None
                 remove_profile_picture = data_json.get('remove_profile_picture', False)
-                logger.debug(f"Dados parseados (JSON): {data_json}")
             else:
                 logger.warning(f"Tipo de conteúdo inesperado para PATCH: {request.content_type}")
                 return JsonResponse({'error': 'Tipo de conteúdo não suportado para esta operação.'}, status=415)
@@ -457,23 +462,20 @@ def profile_update(request):
 
             user.username = username
             user.bio = bio
-            if profile_picture:
-                user.profile_picture = profile_picture
-                logger.info(f"Imagem de perfil atualizada para: {user.profile_picture.url if user.profile_picture else 'Nenhuma imagem'}")
-            elif remove_profile_picture:
+            if remove_profile_picture and user.profile_picture:
                 user.profile_picture = None
-                logger.info("Imagem de perfil removida")
-            user.save()
+                logger.info("Profile picture removed")
 
-            logger.debug(f"Salvo: username={user.username}, profile_picture={user.profile_picture.url if user.profile_picture else ''}")
+            user.save()
+            logger.debug(f"Saved: username={user.username}, profile_picture={user.profile_picture if user.profile_picture else ''}")
 
             return JsonResponse({
                 'status': 'success',
                 'username': user.username,
                 'bio': user.bio or '',
                 'location': user.location or '',
-                'profile_picture': user.profile_picture.url if user.profile_picture else '',
-                'cover_image': user.cover_image.url if user.cover_image else ''
+                'profile_picture': user.profile_picture if user.profile_picture else '',
+                'cover_image': user.cover_image if user.cover_image else ''
             })
         except Exception as e:
             logger.error(f"Erro ao atualizar perfil: {e.__class__.__name__}: {e}")
