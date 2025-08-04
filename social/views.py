@@ -1,16 +1,18 @@
 from django.shortcuts import get_object_or_404
 from django.contrib.auth import get_user_model, authenticate, login, logout
 from django.http import JsonResponse
-from django.middleware.csrf import get_token
-from django.views.decorators.csrf import csrf_protect
+from rest_framework.views import APIView
+from rest_framework.response import Response
+from rest_framework import status
+from rest_framework.authentication import TokenAuthentication
+from rest_framework.permissions import IsAuthenticated, AllowAny
+from rest_framework.authtoken.models import Token
 from .models import Post, PostAction
 import json
 import logging
-from django.views.decorators.cache import never_cache
 from rest_framework.parsers import MultiPartParser
 from rest_framework.request import Request
 from rest_framework.exceptions import ParseError
-from io import BytesIO
 from django.utils.text import slugify
 import os
 import cloudinary.uploader
@@ -21,36 +23,34 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
-def post_list(request):
-    """
-    Retorna a lista de todos os posts. Acessível publicamente.
-    """
-    posts = Post.objects.all().order_by('-created_at')
-    data = [
-        {
-            'id': post.id,
-            'text': post.text,
-            'author': post.author.username,
-            'likes_count': post.likes_count,
-            'reposts_count': post.reposts_count,
-            'comments_count': post.comments_count,
-            'shares_count': post.shares_count,
-            'created_at': post.created_at.isoformat(),
-            'image': post.image if post.image else ''
-        }
-        for post in posts
-    ]
-    return JsonResponse({'posts': data})
+# Existing function-based views (unchanged)
+class PostList(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [AllowAny]
 
-@csrf_protect
-def post_create(request):
-    """
-    Cria um novo post. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
-    
-    if request.method == 'POST':
+    def get(self, request):
+        posts = Post.objects.all().order_by('-created_at')
+        data = [
+            {
+                'id': post.id,
+                'text': post.text,
+                'author': post.author.username,
+                'likes_count': post.likes_count,
+                'reposts_count': post.reposts_count,
+                'comments_count': post.comments_count,
+                'shares_count': post.shares_count,
+                'created_at': post.created_at.isoformat(),
+                'image': post.image if post.image else ''
+            }
+            for post in posts
+        ]
+        return Response({'posts': data})
+
+class PostCreate(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request):
         try:
             if request.content_type.startswith('multipart/form-data'):
                 drf_request = Request(request, parsers=[MultiPartParser()])
@@ -59,22 +59,21 @@ def post_create(request):
                 text = data.get('text')
                 image = files.get('image')
                 if not text and not image:
-                    return JsonResponse({'detail': 'Post must have text or an image'}, status=400)
+                    return Response({'detail': 'Post must have text or an image'}, status=status.HTTP_400_BAD_REQUEST)
 
                 post = Post(author=request.user, text=text if text else '')
                 if image:
                     name, ext = os.path.splitext(image.name)
                     sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
                     current_timestamp = int(time.time())
-                    logger.debug(f"Generated timestamp: {current_timestamp} for upload (system time: {time.ctime()})")
+                    logger.debug(f"Generated timestamp: {current_timestamp} for upload")
                     if current_timestamp < 1700000000:
-                        return JsonResponse({'detail': 'Timestamp inválido, verifique o relógio do sistema'}, status=400)
+                        return Response({'detail': 'Timestamp inválido'}, status=status.HTTP_400_BAD_REQUEST)
                     cloudinary.config(
                         cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
                         api_key=os.getenv('CLOUDINARY_API_KEY'),
                         api_secret=os.getenv('CLOUDINARY_API_SECRET')
                     )
-                    logger.debug(f"Cloudinary config: cloud_name={os.getenv('CLOUDINARY_CLOUD_NAME')}, api_key={os.getenv('CLOUDINARY_API_KEY')}, api_secret=***")
                     upload_result = cloudinary.uploader.upload(
                         image,
                         folder="post_pics",
@@ -83,9 +82,9 @@ def post_create(request):
                         timestamp=current_timestamp
                     )
                     post.image = upload_result['secure_url']
-                    logger.debug(f"Post created with image uploaded to Cloudinary: id={post.id}, url={post.image}")
+                    logger.debug(f"Post created with image: id={post.id}, url={post.image}")
                 post.save()
-                return JsonResponse({
+                return Response({
                     'id': post.id,
                     'text': post.text,
                     'author': request.user.username,
@@ -98,326 +97,288 @@ def post_create(request):
                 if text:
                     post = Post.objects.create(author=request.user, text=text)
                     logger.debug(f"Post created: id={post.id}, author={request.user.username}")
-                    return JsonResponse({
+                    return Response({
                         'id': post.id,
                         'text': post.text,
                         'author': request.user.username,
                         'image': '',
                         'created_at': post.created_at.isoformat()
                     })
-                return JsonResponse({'detail': 'Texto ausente'}, status=400)
+                return Response({'detail': 'Texto ausente'}, status=status.HTTP_400_BAD_REQUEST)
         except json.JSONDecodeError:
-            return JsonResponse({'detail': 'JSON inválido'}, status=400)
+            return Response({'detail': 'JSON inválido'}, status=status.HTTP_400_BAD_REQUEST)
         except ParseError as e:
-            logger.error(f"Erro de parsing de multipart/form-data: {e}")
-            return JsonResponse({'detail': f'Falha ao processar dados de formulário: {e}'}, status=400)
+            logger.error(f"Erro de parsing: {e}")
+            return Response({'detail': f'Falha ao processar dados: {e}'}, status=status.HTTP_400_BAD_REQUEST)
         except Exception as e:
             logger.error(f"Erro ao criar post: {e}")
-            return JsonResponse({'detail': str(e)}, status=400)
-    return JsonResponse({'detail': 'Método inválido'}, status=400)
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-def post_actions(request, post_id):
-    """
-    Retorna as ações do usuário em um post. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
+class PostActions(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    post = get_object_or_404(Post, id=post_id)
-    actions = PostAction.objects.filter(user=request.user, post=post).values('action_type')
-    logger.debug(f"Ações do post {post_id}: {list(actions)}")
-    return JsonResponse({'actions': list(actions)})
+    def get(self, request, post_id):
+        post = get_object_or_404(Post, id=post_id)
+        actions = PostAction.objects.filter(user=request.user, post=post).values('action_type')
+        action_list = list(actions)
+        logger.debug(f"Ações do post {post_id}: {action_list}")
+        return Response({'actions': action_list})
 
-@csrf_protect
-def post_like(request, post_id):
-    """
-    Adiciona ou remove um 'like' de um post. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
+class PostLike(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    post = get_object_or_404(Post, id=post_id)
-    action = PostAction.objects.filter(user=request.user, post=post, action_type='like').first()
-    if action:
-        action.delete()
-        post.likes_count = max(0, post.likes_count - 1)
-    else:
-        PostAction.objects.create(user=request.user, post=post, action_type='like')
-        post.likes_count += 1
-    post.save()
-    logger.debug(f"Like atualizado no post {post_id}: likes_count={post.likes_count}")
-    return JsonResponse({'likes_count': post.likes_count, 'id': post.id})
-
-@csrf_protect
-def post_repost(request, post_id):
-    """
-    Adiciona ou remove um 'repost' de um post. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
-
-    post = get_object_or_404(Post, id=post_id)
-    action = PostAction.objects.filter(user=request.user, post=post, action_type='repost').first()
-    if action:
-        action.delete()
-        post.reposts_count = max(0, post.reposts_count - 1)
-    else:
-        PostAction.objects.create(user=request.user, post=post, action_type='repost')
-        post.reposts_count += 1
-    post.save()
-    logger.debug(f"Repost atualizado no post {post_id}: reposts_count={post.reposts_count}")
-    return JsonResponse({'reposts_count': post.reposts_count, 'id': post.id})
-
-@csrf_protect
-def post_comment(request, post_id):
-    """
-    Adiciona ou remove um 'comentário' de um post. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
-
-    post = get_object_or_404(Post, id=post_id)
-    action = PostAction.objects.filter(user=request.user, post=post, action_type='comment').first()
-    if action:
-        action.delete()
-        post.comments_count = max(0, post.comments_count - 1)
-    else:
-        PostAction.objects.create(user=request.user, post=post, action_type='comment')
-        post.comments_count += 1
-    post.save()
-    logger.debug(f"Comentário atualizado no post {post_id}: comments_count={post.comments_count}")
-    return JsonResponse({'comments_count': post.comments_count, 'id': post.id})
-
-@csrf_protect
-def post_share(request, post_id):
-    """
-    Adiciona ou remove um 'compartilhamento' de um post. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
-
-    post = get_object_or_404(Post, id=post_id)
-    action = PostAction.objects.filter(user=request.user, post=post, action_type='share').first()
-    if action:
-        action.delete()
-        post.shares_count = max(0, post.shares_count - 1)
-    else:
-        PostAction.objects.create(user=request.user, post=post, action_type='share')
-        post.shares_count += 1
-    post.save()
-    logger.debug(f"Compartilhamento atualizado no post {post_id}: shares_count={post.shares_count}")
-    return JsonResponse({'shares_count': post.shares_count, 'id': post.id})
-
-def feed_list(request):
-    """
-    Retorna o feed de posts dos usuários que o usuário logado segue. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
-
-    following_users = request.user.following.all()
-    posts = Post.objects.filter(author__in=following_users).order_by('-created_at')
-    data = [
-        {
-            'id': post.id,
-            'text': post.text,
-            'author': post.author.username,
-            'likes_count': post.likes_count,
-            'reposts_count': post.reposts_count,
-            'comments_count': post.comments_count,
-            'shares_count': post.shares_count,
-            'image': post.image if post.image else '',
-            'created_at': post.created_at.isoformat()
-        }
-        for post in posts
-    ]
-    logger.debug(f"Feed response: {{'posts': {data}}}")
-    return JsonResponse({'posts': data})
-
-@csrf_protect
-def follow_user(request, user_id):
-    """
-    Segue ou deixa de seguir um usuário. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
-
-    user_to_follow = get_object_or_404(User, id=user_id)
-    if user_to_follow != request.user:
-        if request.user.following.filter(id=user_id).exists():
-            request.user.following.remove(user_to_follow)
+    def post(self, request, post_id):
+        post = get_object_or_404(Post, id=post_id)
+        action = PostAction.objects.filter(user=request.user, post=post, action_type='like').first()
+        if action:
+            action.delete()
+            post.likes_count = max(0, post.likes_count - 1)
+            logger.debug(f"Like removido do post {post_id}: likes_count={post.likes_count}")
         else:
-            request.user.following.add(user_to_follow)
-    logger.debug(f"Follow atualizado: user={request.user.username}, target={user_to_follow.username}")
-    return JsonResponse({'status': 'updated', 'following_count': request.user.following.count()})
+            PostAction.objects.create(user=request.user, post=post, action_type='like')
+            post.likes_count += 1
+            logger.debug(f"Like adicionado ao post {post_id}: likes_count={post.likes_count}")
+        post.save()
+        return Response({'likes_count': post.likes_count, 'id': post.id})
 
-def user_suggestions(request):
-    """
-    Retorna sugestões de usuários para seguir. Acessível publicamente.
-    """
-    users = User.objects.exclude(id=request.user.id).values('id', 'username') if request.user.is_authenticated else User.objects.all().values('id', 'username')[:5]
-    return JsonResponse({'suggestions': list(users)})
+    def delete(self, request, post_id):
+        return self.post(request, post_id)
 
-def profile(request):
-    """
-    Retorna os dados do perfil do usuário logado. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
+class PostRepost(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    user = request.user
-    profile_data = {
-        'username': user.username,
-        'handle': user.username.lower(),
-        'bio': user.bio or '',
-        'location': user.location or '',
-        'profile_picture': user.profile_picture if user.profile_picture else '',
-        'cover_image': user.cover_image if user.cover_image else '',
-        'followers': user.followers_set.count(),
-        'following': user.following.count(),
-        'posts_count': user.posts.count(),
-    }
-    logger.debug(f"Profile response: {profile_data}")
-    return JsonResponse(profile_data)
+    def post(self, request, post_id):
+        post = get_object_or_404(Post, id=post_id)
+        action = PostAction.objects.filter(user=request.user, post=post, action_type='repost').first()
+        if action:
+            action.delete()
+            post.reposts_count = max(0, post.reposts_count - 1)
+            logger.debug(f"Repost removido do post {post_id}: reposts_count={post.reposts_count}")
+        else:
+            PostAction.objects.create(user=request.user, post=post, action_type='repost')
+            post.reposts_count += 1
+            logger.debug(f"Repost adicionado ao post {post_id}: reposts_count={post.reposts_count}")
+        post.save()
+        return Response({'reposts_count': post.reposts_count, 'id': post.id})
 
-def profile_posts(request):
-    """
-    Retorna os posts do usuário logado. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
+    def delete(self, request, post_id):
+        return self.post(request, post_id)
 
-    posts = Post.objects.filter(author=request.user).order_by('-created_at')
-    data = [
-        {
-            'id': post.id,
-            'text': post.text,
-            'author': post.author.username,
-            'likes_count': post.likes_count,
-            'reposts_count': post.reposts_count,
-            'comments_count': post.comments_count,
-            'shares_count': post.shares_count,
-            'image': post.image if post.image else '',
-            'created_at': post.created_at.isoformat()
+class PostComment(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, post_id):
+        post = get_object_or_404(Post, id=post_id)
+        action = PostAction.objects.filter(user=request.user, post=post, action_type='comment').first()
+        if action:
+            action.delete()
+            post.comments_count = max(0, post.comments_count - 1)
+            logger.debug(f"Comentário removido do post {post_id}: comments_count={post.comments_count}")
+        else:
+            PostAction.objects.create(user=request.user, post=post, action_type='comment')
+            post.comments_count += 1
+            logger.debug(f"Comentário adicionado ao post {post_id}: comments_count={post.comments_count}")
+        post.save()
+        return Response({'comments_count': post.comments_count, 'id': post.id})
+
+    def delete(self, request, post_id):
+        return self.post(request, post_id)
+
+class PostShare(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, post_id):
+        post = get_object_or_404(Post, id=post_id)
+        action = PostAction.objects.filter(user=request.user, post=post, action_type='share').first()
+        if action:
+            action.delete()
+            post.shares_count = max(0, post.shares_count - 1)
+            logger.debug(f"Compartilhamento removido do post {post_id}: shares_count={post.shares_count}")
+        else:
+            PostAction.objects.create(user=request.user, post=post, action_type='share')
+            post.shares_count += 1
+            logger.debug(f"Compartilhamento adicionado ao post {post_id}: shares_count={post.shares_count}")
+        post.save()
+        return Response({'shares_count': post.shares_count, 'id': post.id})
+
+    def delete(self, request, post_id):
+        return self.post(request, post_id)
+
+class FeedList(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        following_users = request.user.following.all()
+        posts = Post.objects.filter(author__in=following_users).order_by('-created_at')
+        data = [
+            {
+                'id': post.id,
+                'text': post.text,
+                'author': post.author.username,
+                'likes_count': post.likes_count,
+                'reposts_count': post.reposts_count,
+                'comments_count': post.comments_count,
+                'shares_count': post.shares_count,
+                'image': post.image if post.image else '',
+                'created_at': post.created_at.isoformat()
+            }
+            for post in posts
+        ]
+        logger.debug(f"Feed response: {{'posts': {data}}}")
+        return Response({'posts': data})
+
+class FollowUser(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def post(self, request, user_id):
+        user_to_follow = get_object_or_404(User, id=user_id)
+        if user_to_follow != request.user:
+            if request.user.following.filter(id=user_id).exists():
+                request.user.following.remove(user_to_follow)
+            else:
+                request.user.following.add(user_to_follow)
+        logger.debug(f"Follow atualizado: user={request.user.username}, target={user_to_follow.username}")
+        return Response({'status': 'updated', 'following_count': request.user.following.count()})
+
+    def delete(self, request, user_id):
+        return self.post(request, user_id)
+
+class UserSuggestions(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        users = User.objects.exclude(id=request.user.id).values('id', 'username') if request.user.is_authenticated else User.objects.all().values('id', 'username')[:5]
+        return Response({'suggestions': list(users)})
+
+class Profile(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        user = request.user
+        profile_data = {
+            'username': user.username,
+            'handle': user.username.lower(),
+            'bio': user.bio or '',
+            'location': user.location or '',
+            'profile_picture': user.profile_picture if user.profile_picture else '',
+            'cover_image': user.cover_image if user.cover_image else '',
+            'followers': user.followers_set.count(),
+            'following': user.following.count(),
+            'posts_count': user.posts.count(),
         }
-        for post in posts
-    ]
-    logger.debug(f"Profile posts response: {{'posts': {data}}}")
-    return JsonResponse({'posts': data})
+        logger.debug(f"Profile response: {profile_data}")
+        return Response(profile_data)
 
-@csrf_protect
-def login_view(request):
-    """
-    Gerencia o login de usuários.
-    """
-    logger.debug(f"CSRF token recebido: {request.META.get('HTTP_X_CSRFTOKEN')}, Cookie CSRFT: {request.COOKIES.get('csrftoken')}")
-    if request.method == 'POST':
+class ProfilePosts(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        posts = Post.objects.filter(author=request.user).order_by('-created_at')
+        data = [
+            {
+                'id': post.id,
+                'text': post.text,
+                'author': post.author.username,
+                'likes_count': post.likes_count,
+                'reposts_count': post.reposts_count,
+                'comments_count': post.comments_count,
+                'shares_count': post.shares_count,
+                'image': post.image if post.image else '',
+                'created_at': post.created_at.isoformat()
+            }
+            for post in posts
+        ]
+        logger.debug(f"Profile posts response: {{'posts': {data}}}")
+        return Response({'posts': data})
+
+class LoginView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        logger.debug("Login view acessada, CSRF desativado")
         try:
-            data = json.loads(request.body)
+            data = request.data
             username = data.get('username')
             password = data.get('password')
             if not username or not password:
                 logger.warning("Campos de login ausentes")
-                return JsonResponse({'detail': 'Username e senha são obrigatórios'}, status=400)
-        except json.JSONDecodeError:
-            logger.error("JSON inválido na requisição de login")
-            return JsonResponse({'detail': 'JSON inválido'}, status=400)
-        
+                return Response({'detail': 'Username e senha são obrigatórios'}, status=status.HTTP_400_BAD_REQUEST)
+        except Exception as e:
+            logger.error(f"Erro ao decodificar dados: {e}")
+            return Response({'detail': 'JSON inválido'}, status=status.HTTP_400_BAD_REQUEST)
+
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
-            logger.debug(f"Login bem-sucedido: {username}")
-            return JsonResponse({'status': 'success', 'username': user.username})
+            token, created = Token.objects.get_or_create(user=user)
+            logger.debug(f"Login bem-sucedido: {username}, Token: {token.key}")
+            return Response({'status': 'success', 'username': user.username, 'token': token.key})
         logger.warning(f"Login falhou: {username}")
-        return JsonResponse({'detail': 'Credenciais inválidas'}, status=401)
-    logger.error("Método inválido para login")
-    return JsonResponse({'detail': 'Método inválido'}, status=400)
+        return Response({'detail': 'Credenciais inválidas'}, status=status.HTTP_401_UNAUTHORIZED)
 
-@csrf_protect
-def register_view(request):
-    """
-    Gerencia o registro de novos usuários.
-    """
-    logger.debug(f"Recebendo requisição POST para registro. Corpo bruto: {request.body.decode('utf-8')}")
-    if request.method == 'POST':
+class RegisterView(APIView):
+    permission_classes = [AllowAny]
+
+    def post(self, request):
+        logger.debug("Register view acessada, CSRF desativado")
         try:
-            data = json.loads(request.body)
+            data = request.data
             username = data.get('username')
             password = data.get('password')
             email = data.get('email')
-            logger.debug(f"JSON parseado: username={username}, password={'*' * len(password) if password else 'None'}, email={email}")
-        except json.JSONDecodeError as e:
-            logger.error(f"Erro ao decodificar JSON na requisição de registro: {e}")
-            return JsonResponse({'detail': 'JSON inválido'}, status=400)
+            logger.debug(f"JSON parseado: username={username}, email={email}")
+        except Exception as e:
+            logger.error(f"Erro ao decodificar JSON: {e}")
+            return Response({'detail': 'JSON inválido'}, status=status.HTTP_400_BAD_REQUEST)
 
         if not username or not password or not email:
             logger.warning("Campos obrigatórios ausentes no registro")
-            return JsonResponse({'detail': 'Todos os campos são obrigatórios'}, status=400)
+            return Response({'detail': 'Todos os campos são obrigatórios'}, status=status.HTTP_400_BAD_REQUEST)
 
         if User.objects.filter(username=username).exists():
             logger.warning(f"Registro falhou: usuário {username} já existe")
-            return JsonResponse({'detail': 'Usuário já existe'}, status=400)
+            return Response({'detail': 'Usuário já existe'}, status=status.HTTP_400_BAD_REQUEST)
 
         try:
             user = User.objects.create_user(username=username, password=password, email=email)
             login(request, user)
-            logger.debug(f"Registro bem-sucedido: {username}")
-            return JsonResponse({'status': 'success', 'username': user.username})
+            token, created = Token.objects.get_or_create(user=user)
+            logger.debug(f"Registro bem-sucedido: {username}, Token: {token.key}")
+            return Response({'status': 'success', 'username': user.username, 'token': token.key})
         except Exception as e:
             logger.error(f"Erro ao criar usuário: {e}")
-            return JsonResponse({'detail': 'Falha ao criar usuário'}, status=500)
-    logger.error("Método inválido para registro")
-    return JsonResponse({'detail': 'Método inválido'}, status=400)
+            return Response({'detail': 'Falha ao criar usuário'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-@never_cache
-def get_csrf_token(request):
-    """
-    Retorna o token CSRF e define o cookie.
-    """
-    token = get_token(request)
-    response = JsonResponse({'csrfToken': token})
-    response.set_cookie(
-        'csrftoken',
-        token,
-        max_age=31449600,
-        secure=os.getenv('ENVIRONMENT') == 'production',
-        httponly=False,
-        samesite='None' if os.getenv('ENVIRONMENT') == 'production' else 'Lax',
-        domain=None
-    )
-    logger.debug(f"CSRF token gerado e cookie definido: {token}")
-    return response
+class LogoutView(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
-@csrf_protect
-def logout_view(request):
-    """
-    Gerencia o logout do usuário. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
-        
-    if request.method == 'POST':
+    def post(self, request):
+        request.user.auth_token.delete()
         logout(request)
         logger.debug("Logout bem-sucedido")
-        return JsonResponse({'status': 'success'})
-    logger.error("Método inválido para logout")
-    return JsonResponse({'detail': 'Método inválido'}, status=400)
+        return Response({'status': 'success'})
 
-@csrf_protect
-def profile_update(request):
-    """
-    Atualiza o perfil do usuário. Requer autenticação.
-    """
-    if not request.user.is_authenticated:
-        return JsonResponse({'detail': 'Não autenticado'}, status=401)
+class ProfileUpdate(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
 
-    if request.method == 'PATCH':
+    def patch(self, request):
         user = request.user
         try:
             raw_body = request.body
             logger.debug(f"Request headers: {dict(request.headers)}")
             logger.debug(f"Content-Type: {request.content_type}")
-            logger.debug(f"Raw request body length: {len(raw_body)}")
             logger.debug(f"Raw request body: {raw_body.decode('utf-8', errors='ignore')}")
 
             data = None
@@ -425,23 +386,12 @@ def profile_update(request):
 
             if request.content_type.startswith('multipart/form-data'):
                 try:
-                    if hasattr(request, '_read_started'):
-                        request._read_started = False
-                    if hasattr(request, '_stream'):
-                        request._stream.seek(0)
-                    else:
-                        request._stream = BytesIO(raw_body)
-                        request.read = request._stream.read
-
                     drf_request = Request(request, parsers=[MultiPartParser()])
                     data = drf_request.data
                     files = drf_request.FILES
                 except ParseError as e:
-                    logger.error(f"Erro de parsing de multipart/form-data com DRF MultiPartParser: {e}")
-                    return JsonResponse({'detail': f'Falha ao processar dados de formulário: {e}'}, status=400)
-                except Exception as e:
-                    logger.error(f"Erro inesperado ao usar DRF MultiPartParser: {e.__class__.__name__}: {e}")
-                    return JsonResponse({'detail': f'Erro inesperado no parsing: {e}'}, status=400)
+                    logger.error(f"Erro de parsing: {e}")
+                    return Response({'detail': f'Falha ao processar dados: {e}'}, status=status.HTTP_400_BAD_REQUEST)
 
                 bio = data.get('bio', user.bio or '')
                 username = data.get('username')
@@ -450,21 +400,20 @@ def profile_update(request):
                 new_password = data.get('new_password')
                 remove_profile_picture = data.get('remove_profile_picture', 'false').lower() == 'true'
 
-                logger.debug(f"Dados parseados (multipart): POST={dict(data)}, FILES={dict(files)}")
+                logger.debug(f"Dados parseados: POST={dict(data)}, FILES={dict(files)}")
 
                 if profile_picture:
                     name, ext = os.path.splitext(profile_picture.name)
                     sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
                     current_timestamp = int(time.time())
-                    logger.debug(f"Generated timestamp: {current_timestamp} for upload (system time: {time.ctime()})")
+                    logger.debug(f"Generated timestamp: {current_timestamp}")
                     if current_timestamp < 1700000000:
-                        return JsonResponse({'detail': 'Timestamp inválido, verifique o relógio do sistema'}, status=400)
+                        return Response({'detail': 'Timestamp inválido'}, status=status.HTTP_400_BAD_REQUEST)
                     cloudinary.config(
                         cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
                         api_key=os.getenv('CLOUDINARY_API_KEY'),
                         api_secret=os.getenv('CLOUDINARY_API_SECRET')
                     )
-                    logger.debug(f"Cloudinary config: cloud_name={os.getenv('CLOUDINARY_CLOUD_NAME')}, api_key={os.getenv('CLOUDINARY_API_KEY')}, api_secret=***")
                     upload_result = cloudinary.uploader.upload(
                         profile_picture,
                         folder="profile_pics",
@@ -473,7 +422,7 @@ def profile_update(request):
                         timestamp=current_timestamp
                     )
                     user.profile_picture = upload_result['secure_url']
-                    logger.debug(f"Profile picture uploaded to Cloudinary: url={user.profile_picture}")
+                    logger.debug(f"Profile picture uploaded: url={user.profile_picture}")
 
             elif request.content_type.startswith('application/json'):
                 data_json = json.loads(raw_body)
@@ -483,25 +432,25 @@ def profile_update(request):
                 new_password = data_json.get('new_password')
                 remove_profile_picture = data_json.get('remove_profile_picture', False)
             else:
-                logger.warning(f"Tipo de conteúdo inesperado para PATCH: {request.content_type}")
-                return JsonResponse({'detail': 'Tipo de conteúdo não suportado para esta operação'}, status=415)
+                logger.warning(f"Tipo de conteúdo inesperado: {request.content_type}")
+                return Response({'detail': 'Tipo de conteúdo não suportado'}, status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
 
-            logger.debug(f"Dados processados: username={username!r}, profile_picture={'sim' if profile_picture else 'não'}, bio={bio!r}, old_password={old_password!r}, new_password={new_password!r}, remove_profile_picture={remove_profile_picture}")
+            logger.debug(f"Dados processados: username={username!r}, bio={bio!r}")
 
             if not username:
-                logger.warning("Username vazio ou não fornecido")
-                return JsonResponse({'detail': 'Nome de usuário é obrigatório'}, status=400)
+                logger.warning("Username vazio")
+                return Response({'detail': 'Nome de usuário é obrigatório'}, status=status.HTTP_400_BAD_REQUEST)
             if len(username) < 3:
                 logger.warning(f"Username muito curto: {username}")
-                return JsonResponse({'detail': 'O nome de usuário deve ter pelo menos 3 caracteres'}, status=400)
+                return Response({'detail': 'O nome de usuário deve ter pelo menos 3 caracteres'}, status=status.HTTP_400_BAD_REQUEST)
             if username != user.username and User.objects.filter(username=username).exists():
                 logger.warning(f"Username já existe: {username}")
-                return JsonResponse({'detail': 'Nome de usuário já existe'}, status=400)
+                return Response({'detail': 'Nome de usuário já existe'}, status=status.HTTP_400_BAD_REQUEST)
 
             if new_password:
                 if not old_password or not authenticate(request, username=user.username, password=old_password):
                     logger.warning("Senha antiga inválida")
-                    return JsonResponse({'detail': 'Senha antiga inválida'}, status=400)
+                    return Response({'detail': 'Senha antiga inválida'}, status=status.HTTP_400_BAD_REQUEST)
                 user.set_password(new_password)
 
             user.username = username
@@ -513,7 +462,7 @@ def profile_update(request):
             user.save()
             logger.debug(f"Saved: username={user.username}, profile_picture={user.profile_picture if user.profile_picture else ''}")
 
-            return JsonResponse({
+            return Response({
                 'status': 'success',
                 'username': user.username,
                 'bio': user.bio or '',
@@ -522,7 +471,5 @@ def profile_update(request):
                 'cover_image': user.cover_image if user.cover_image else ''
             })
         except Exception as e:
-            logger.error(f"Erro ao atualizar perfil: {e.__class__.__name__}: {e}")
-            return JsonResponse({'detail': str(e)}, status=400)
-    logger.error("Método inválido para profile_update")
-    return JsonResponse({'detail': 'Método inválido'}, status=400)
+            logger.error(f"Erro ao atualizar perfil: {e}")
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)

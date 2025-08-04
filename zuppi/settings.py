@@ -12,10 +12,7 @@ ENVIRONMENT = os.getenv('ENVIRONMENT', 'development')
 SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-_um@@ac&hg&^o^c8p37j7nbiu8#_6vin-ft7_fpm@(4)4cnjfj')
 DEBUG = ENVIRONMENT != 'production'
 
-if ENVIRONMENT == 'production':
-    ALLOWED_HOSTS = ['zuppi-backend.onrender.com', 'zuppi.vercel.app']
-else:
-    ALLOWED_HOSTS = ['localhost', '127.0.0.1']
+ALLOWED_HOSTS = ['zuppi-backend.onrender.com', 'zuppi.vercel.app'] if ENVIRONMENT == 'production' else ['localhost', '127.0.0.1']
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -25,6 +22,7 @@ INSTALLED_APPS = [
     'django.contrib.messages',
     'django.contrib.staticfiles',
     'rest_framework',
+    'rest_framework.authtoken',
     'social',
     'corsheaders',
     'cloudinary_storage',
@@ -37,53 +35,46 @@ MIDDLEWARE = [
     'whitenoise.middleware.WhiteNoiseMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
     'django.middleware.common.CommonMiddleware',
-    'django.middleware.csrf.CsrfViewMiddleware',
+    # 'django.middleware.csrf.CsrfViewMiddleware',  # Desativado para token auth
     'django.contrib.auth.middleware.AuthenticationMiddleware',
     'django.contrib.messages.middleware.MessageMiddleware',
     'django.middleware.clickjacking.XFrameOptionsMiddleware',
 ]
 
-# Configurações CORS
-CORS_ALLOW_CREDENTIALS = True
+REST_FRAMEWORK = {
+    'DEFAULT_AUTHENTICATION_CLASSES': [
+        'rest_framework.authentication.TokenAuthentication',
+        'rest_framework.authentication.SessionAuthentication',  # Opcional para admin
+    ],
+    'DEFAULT_PERMISSION_CLASSES': [
+        'rest_framework.permissions.IsAuthenticated',
+    ],
+}
+
+CORS_ALLOW_CREDENTIALS = False  # Desativado, pois usamos TokenAuthentication
 CORS_ALLOWED_ORIGINS = [
-    'https://zuppi.vercel.app' if ENVIRONMENT == 'production' else 'http://localhost:3000',
-    'http://localhost:5173' if ENVIRONMENT != 'production' else 'https://zuppi-backend.onrender.com',
+    'https://zuppi.vercel.app' if ENVIRONMENT == 'production' else 'http://localhost:5173',
+    'http://localhost:8000',  # Backend local
 ]
-CORS_ALLOW_METHODS = [
-    'DELETE',
-    'GET',
-    'OPTIONS',
-    'PATCH',
-    'POST',
-    'PUT',
-]
+CORS_ALLOW_METHODS = ['DELETE', 'GET', 'OPTIONS', 'PATCH', 'POST', 'PUT']
 CORS_ALLOW_HEADERS = [
     'accept',
-    'accept-encoding',
     'authorization',
     'content-type',
     'dnt',
     'origin',
     'user-agent',
-    'x-csrftoken',
     'x-requested-with',
 ]
 
-# Configurações CSRF e de Sessão
 if ENVIRONMENT == 'production':
-    CSRF_TRUSTED_ORIGINS = ['https://zuppi.vercel.app', 'https://zuppi-backend.onrender.com']
-    CSRF_COOKIE_SECURE = True
-    CSRF_COOKIE_SAMESITE = 'None'
-    CSRF_COOKIE_HTTPONLY = False
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_SAMESITE = 'None'
+    SESSION_COOKIE_HTTPONLY = False
 else:
-    CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://localhost:5173']
-    CSRF_COOKIE_SECURE = False
-    CSRF_COOKIE_SAMESITE = 'Lax'
-    CSRF_COOKIE_HTTPONLY = False
     SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_SAMESITE = 'Lax'
+    SESSION_COOKIE_HTTPONLY = False
 
 ROOT_URLCONF = 'zuppi.urls'
 
@@ -149,7 +140,6 @@ STATIC_URL = '/static/'
 STATIC_ROOT = os.path.join(BASE_DIR, 'staticfiles')
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
 
-# Configurações do Cloudinary
 CLOUDINARY_STORAGE = {
     'CLOUD_NAME': os.getenv('CLOUDINARY_CLOUD_NAME'),
     'API_KEY': os.getenv('CLOUDINARY_API_KEY'),
