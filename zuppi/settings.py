@@ -13,7 +13,6 @@ SECRET_KEY = os.getenv('DJANGO_SECRET_KEY', 'django-insecure-_um@@ac&hg&^o^c8p37
 DEBUG = ENVIRONMENT != 'production'
 
 if ENVIRONMENT == 'production':
-    # Certifique-se de que o nome de domínio do backend está correto aqui
     ALLOWED_HOSTS = ['zuppi-backend.onrender.com', 'zuppi.vercel.app']
 else:
     ALLOWED_HOSTS = ['localhost', '127.0.0.1']
@@ -46,23 +45,43 @@ MIDDLEWARE = [
 
 # Configurações CORS
 CORS_ALLOW_CREDENTIALS = True
-if ENVIRONMENT == 'production':
-    CORS_ALLOWED_ORIGINS = ['https://zuppi.vercel.app']
-else:
-    CORS_ALLOWED_ORIGINS = ['http://localhost:3000', 'http://localhost:5173']
+CORS_ALLOWED_ORIGINS = [
+    'https://zuppi.vercel.app' if ENVIRONMENT == 'production' else 'http://localhost:3000',
+    'http://localhost:5173' if ENVIRONMENT != 'production' else 'https://zuppi-backend.onrender.com',
+]
+CORS_ALLOW_METHODS = [
+    'DELETE',
+    'GET',
+    'OPTIONS',
+    'PATCH',
+    'POST',
+    'PUT',
+]
+CORS_ALLOW_HEADERS = [
+    'accept',
+    'accept-encoding',
+    'authorization',
+    'content-type',
+    'dnt',
+    'origin',
+    'user-agent',
+    'x-csrftoken',
+    'x-requested-with',
+]
 
-# Configurações CSRF e de Sessão para Produção vs. Desenvolvimento
+# Configurações CSRF e de Sessão
 if ENVIRONMENT == 'production':
     CSRF_TRUSTED_ORIGINS = ['https://zuppi.vercel.app', 'https://zuppi-backend.onrender.com']
     CSRF_COOKIE_SECURE = True
     CSRF_COOKIE_SAMESITE = 'None'
+    CSRF_COOKIE_HTTPONLY = False
     SESSION_COOKIE_SECURE = True
     SESSION_COOKIE_SAMESITE = 'None'
 else:
     CSRF_TRUSTED_ORIGINS = ['http://localhost:3000', 'http://localhost:5173']
-    CSRF_COOKIE_DOMAIN = None
     CSRF_COOKIE_SECURE = False
     CSRF_COOKIE_SAMESITE = 'Lax'
+    CSRF_COOKIE_HTTPONLY = False
     SESSION_COOKIE_SECURE = False
     SESSION_COOKIE_SAMESITE = 'Lax'
 
@@ -157,6 +176,3 @@ LOGGING = {
         'level': 'INFO' if ENVIRONMENT == 'production' else 'DEBUG',
     },
 }
-
-# CSRF_COOKIE_HTTPONLY deve ser False para que o JavaScript possa lê-lo
-CSRF_COOKIE_HTTPONLY = False
