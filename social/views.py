@@ -299,9 +299,7 @@ def profile_posts(request):
     return JsonResponse({'posts': data})
 
 def login_view(request):
-    """
-    Gerencia o login do usuário.
-    """
+    logger.debug(f"CSRF token recebido: {request.META.get('HTTP_X_CSRFTOKEN')}, Cookie CSRFT: {request.COOKIES.get('csrftoken')}")
     if request.method == 'POST':
         try:
             data = json.loads(request.body)
@@ -309,7 +307,6 @@ def login_view(request):
             password = data.get('password')
         except json.JSONDecodeError:
             return JsonResponse({'error': 'JSON inválido'}, status=400)
-        
         user = authenticate(request, username=username, password=password)
         if user is not None:
             login(request, user)
@@ -354,35 +351,16 @@ def register_view(request):
 
 @never_cache
 def get_csrf_token(request):
-    """
-    Retorna o token CSRF e define o cookie csrftoken com base no ambiente.
-    """
     token = get_token(request)
     response = JsonResponse({'csrfToken': token})
-
-    # A lógica foi transferida para o settings.py, mas a view pode ser mais explícita
-    # para garantir o comportamento em tempo de execução.
-    if os.getenv('ENVIRONMENT') == 'production':
-        # Em produção, com HTTPS, o cookie precisa ser seguro e 'None'
-        response.set_cookie(
-            'csrftoken',
-            token,
-            max_age=31449600,
-            secure=True,
-            httponly=False,
-            samesite='None'
-        )
-    else:
-        # Em desenvolvimento, o cookie pode ser inseguro e 'Lax'
-        response.set_cookie(
-            'csrftoken',
-            token,
-            max_age=31449600,
-            secure=False,
-            httponly=False,
-            samesite='Lax'
-        )
-
+    response.set_cookie(
+        'csrftoken',
+        token,
+        max_age=31449600,
+        secure=os.getenv('ENVIRONMENT') == 'production',
+        httponly=False,
+        samesite='None' if os.getenv('ENVIRONMENT') == 'production' else 'Lax'
+    )
     logger.debug(f"CSRF token gerado e cookie definido: {token}")
     return response
 
