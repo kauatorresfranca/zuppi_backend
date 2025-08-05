@@ -11,7 +11,7 @@ from .models import Post, PostAction
 import json
 import logging
 from rest_framework.parsers import MultiPartParser
-from rest_framework.request import Request as DRFRequest
+from rest_framework.request import Request
 from rest_framework.exceptions import ParseError
 from django.utils.text import slugify
 import os
@@ -23,8 +23,7 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
-# Post views (não alterados, pois não usam as funções de auth do Django)
-# ----------------------------------------------------------------------
+# Existing function-based views (unchanged)
 class PostList(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [AllowAny]
@@ -54,8 +53,7 @@ class PostCreate(APIView):
     def post(self, request):
         try:
             if request.content_type.startswith('multipart/form-data'):
-                # Usando o nome 'drf_request' para evitar confusão
-                drf_request = DRFRequest(request, parsers=[MultiPartParser()])
+                drf_request = Request(request, parsers=[MultiPartParser()])
                 data = drf_request.data
                 files = drf_request.FILES
                 text = data.get('text')
@@ -303,9 +301,6 @@ class ProfilePosts(APIView):
         logger.debug(f"Profile posts response: {{'posts': {data}}}")
         return Response({'posts': data})
 
-# ----------------------------------------
-# Vistas de Autenticação Corrigidas
-# ----------------------------------------
 class LoginView(APIView):
     permission_classes = [AllowAny]
 
@@ -322,9 +317,9 @@ class LoginView(APIView):
             logger.error(f"Erro ao decodificar dados: {e}")
             return Response({'detail': 'JSON inválido'}, status=status.HTTP_400_BAD_REQUEST)
 
-        user = authenticate(request=request._request, username=username, password=password)
+        user = authenticate(request, username=username, password=password)
         if user is not None:
-            login(request._request, user)
+            login(request, user)
             token, created = Token.objects.get_or_create(user=user)
             logger.debug(f"Login bem-sucedido: {username}, Token: {token.key}")
             return Response({'status': 'success', 'username': user.username, 'token': token.key})
@@ -356,7 +351,7 @@ class RegisterView(APIView):
 
         try:
             user = User.objects.create_user(username=username, password=password, email=email)
-            login(request._request, user)
+            login(request, user)
             token, created = Token.objects.get_or_create(user=user)
             logger.debug(f"Registro bem-sucedido: {username}, Token: {token.key}")
             return Response({'status': 'success', 'username': user.username, 'token': token.key})
@@ -370,13 +365,10 @@ class LogoutView(APIView):
 
     def post(self, request):
         request.user.auth_token.delete()
-        logout(request._request)
+        logout(request)
         logger.debug("Logout bem-sucedido")
         return Response({'status': 'success'})
 
-# ----------------------------------------
-# Vista de Atualização de Perfil Corrigida
-# ----------------------------------------
 class ProfileUpdate(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
@@ -384,53 +376,66 @@ class ProfileUpdate(APIView):
     def patch(self, request):
         user = request.user
         try:
-            # Não é necessário o drf_request = Request(request, ...) pois request já é um DRF Request
-            # e a classe APIView já faz a gestão do body. O seu código já tem a lógica para 
-            # MultiPartParser e application/json, que funciona com request.data e request.FILES
-            # quando a APIView usa esses parsers.
-            
-            data = request.data
+            raw_body = request.body
+            logger.debug(f"Request headers: {dict(request.headers)}")
+            logger.debug(f"Content-Type: {request.content_type}")
+            logger.debug(f"Raw request body: {raw_body.decode('utf-8', errors='ignore')}")
 
-            bio = data.get('bio', user.bio or '')
-            username = data.get('username')
-            profile_picture = data.get('profile_picture')
-            old_password = data.get('old_password')
-            new_password = data.get('new_password')
-            remove_profile_picture = str(data.get('remove_profile_picture', 'false')).lower() == 'true'
+            data = None
+            files = None
 
-            logger.debug(f"Dados parseados: POST={dict(data)}")
-            
-            if 'profile_picture' in request.FILES:
-                profile_picture = request.FILES['profile_picture']
+            if request.content_type.startswith('multipart/form-data'):
+                try:
+                    drf_request = Request(request, parsers=[MultiPartParser()])
+                    data = drf_request.data
+                    files = drf_request.FILES
+                except ParseError as e:
+                    logger.error(f"Erro de parsing: {e}")
+                    return Response({'detail': f'Falha ao processar dados: {e}'}, status=status.HTTP_400_BAD_REQUEST)
 
-            if profile_picture and isinstance(profile_picture, DRFRequest):
-                # Este bloco trata o caso onde profile_picture é um objeto de request, 
-                # o que pode ser uma fonte de erro.
-                return Response({'detail': 'Objeto de arquivo inválido'}, status=status.HTTP_400_BAD_REQUEST)
+                bio = data.get('bio', user.bio or '')
+                username = data.get('username')
+                profile_picture = files.get('profile_picture')
+                old_password = data.get('old_password')
+                new_password = data.get('new_password')
+                remove_profile_picture = data.get('remove_profile_picture', 'false').lower() == 'true'
 
-            if profile_picture and not isinstance(profile_picture, str):
-                name, ext = os.path.splitext(profile_picture.name)
-                sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
-                current_timestamp = int(time.time())
-                logger.debug(f"Generated timestamp: {current_timestamp}")
-                if current_timestamp < 1700000000:
-                    return Response({'detail': 'Timestamp inválido'}, status=status.HTTP_400_BAD_REQUEST)
-                cloudinary.config(
-                    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
-                    api_key=os.getenv('CLOUDINARY_API_KEY'),
-                    api_secret=os.getenv('CLOUDINARY_API_SECRET')
-                )
-                upload_result = cloudinary.uploader.upload(
-                    profile_picture,
-                    folder="profile_pics",
-                    public_id=sanitized_name,
-                    overwrite=True,
-                    timestamp=current_timestamp
-                )
-                user.profile_picture = upload_result['secure_url']
-                logger.debug(f"Profile picture uploaded: url={user.profile_picture}")
+                logger.debug(f"Dados parseados: POST={dict(data)}, FILES={dict(files)}")
 
-            logger.debug(f"Dados processados: username={username!r}, bio={bio!r}, old_password={old_password!r}, new_password={new_password!r}")
+                if profile_picture:
+                    name, ext = os.path.splitext(profile_picture.name)
+                    sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
+                    current_timestamp = int(time.time())
+                    logger.debug(f"Generated timestamp: {current_timestamp}")
+                    if current_timestamp < 1700000000:
+                        return Response({'detail': 'Timestamp inválido'}, status=status.HTTP_400_BAD_REQUEST)
+                    cloudinary.config(
+                        cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+                        api_key=os.getenv('CLOUDINARY_API_KEY'),
+                        api_secret=os.getenv('CLOUDINARY_API_SECRET')
+                    )
+                    upload_result = cloudinary.uploader.upload(
+                        profile_picture,
+                        folder="profile_pics",
+                        public_id=sanitized_name,
+                        overwrite=True,
+                        timestamp=current_timestamp
+                    )
+                    user.profile_picture = upload_result['secure_url']
+                    logger.debug(f"Profile picture uploaded: url={user.profile_picture}")
+
+            elif request.content_type.startswith('application/json'):
+                data_json = json.loads(raw_body)
+                bio = data_json.get('bio', user.bio or '')
+                username = data_json.get('username')
+                old_password = data_json.get('old_password')
+                new_password = data_json.get('new_password')
+                remove_profile_picture = data_json.get('remove_profile_picture', False)
+            else:
+                logger.warning(f"Tipo de conteúdo inesperado: {request.content_type}")
+                return Response({'detail': 'Tipo de conteúdo não suportado'}, status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
+
+            logger.debug(f"Dados processados: username={username!r}, bio={bio!r}")
 
             if not username:
                 logger.warning("Username vazio")
@@ -442,8 +447,8 @@ class ProfileUpdate(APIView):
                 logger.warning(f"Username já existe: {username}")
                 return Response({'detail': 'Nome de usuário já existe'}, status=status.HTTP_400_BAD_REQUEST)
 
-            if new_password and old_password and new_password.strip() and old_password.strip():
-                if not authenticate(request._request, username=user.username, password=old_password):
+            if new_password:
+                if not old_password or not authenticate(request, username=user.username, password=old_password):
                     logger.warning("Senha antiga inválida")
                     return Response({'detail': 'Senha antiga inválida'}, status=status.HTTP_400_BAD_REQUEST)
                 user.set_password(new_password)
