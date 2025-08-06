@@ -376,66 +376,21 @@ class ProfileUpdate(APIView):
     def patch(self, request):
         user = request.user
         try:
-            raw_body = request.body
             logger.debug(f"Request headers: {dict(request.headers)}")
             logger.debug(f"Content-Type: {request.content_type}")
-            logger.debug(f"Raw request body: {raw_body.decode('utf-8', errors='ignore')}")
 
-            data = None
-            files = None
+            # Dados do formulário
+            data = request.data
+            files = request.FILES
 
-            if request.content_type.startswith('multipart/form-data'):
-                try:
-                    drf_request = Request(request, parsers=[MultiPartParser()])
-                    data = drf_request.data
-                    files = drf_request.FILES
-                except ParseError as e:
-                    logger.error(f"Erro de parsing: {e}")
-                    return Response({'detail': f'Falha ao processar dados: {e}'}, status=status.HTTP_400_BAD_REQUEST)
+            bio = data.get('bio', user.bio or '')
+            username = data.get('username')
+            profile_picture = files.get('profile_picture')
+            old_password = data.get('old_password')
+            new_password = data.get('new_password')
+            remove_profile_picture = data.get('remove_profile_picture', 'false').lower() == 'true'
 
-                bio = data.get('bio', user.bio or '')
-                username = data.get('username')
-                profile_picture = files.get('profile_picture')
-                old_password = data.get('old_password')
-                new_password = data.get('new_password')
-                remove_profile_picture = data.get('remove_profile_picture', 'false').lower() == 'true'
-
-                logger.debug(f"Dados parseados: POST={dict(data)}, FILES={dict(files)}")
-
-                if profile_picture:
-                    name, ext = os.path.splitext(profile_picture.name)
-                    sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
-                    current_timestamp = int(time.time())
-                    logger.debug(f"Generated timestamp: {current_timestamp}")
-                    if current_timestamp < 1700000000:
-                        return Response({'detail': 'Timestamp inválido'}, status=status.HTTP_400_BAD_REQUEST)
-                    cloudinary.config(
-                        cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
-                        api_key=os.getenv('CLOUDINARY_API_KEY'),
-                        api_secret=os.getenv('CLOUDINARY_API_SECRET')
-                    )
-                    upload_result = cloudinary.uploader.upload(
-                        profile_picture,
-                        folder="profile_pics",
-                        public_id=sanitized_name,
-                        overwrite=True,
-                        timestamp=current_timestamp
-                    )
-                    user.profile_picture = upload_result['secure_url']
-                    logger.debug(f"Profile picture uploaded: url={user.profile_picture}")
-
-            elif request.content_type.startswith('application/json'):
-                data_json = json.loads(raw_body)
-                bio = data_json.get('bio', user.bio or '')
-                username = data_json.get('username')
-                old_password = data_json.get('old_password')
-                new_password = data_json.get('new_password')
-                remove_profile_picture = data_json.get('remove_profile_picture', False)
-            else:
-                logger.warning(f"Tipo de conteúdo inesperado: {request.content_type}")
-                return Response({'detail': 'Tipo de conteúdo não suportado'}, status=status.HTTP_415_UNSUPPORTED_MEDIA_TYPE)
-
-            logger.debug(f"Dados processados: username={username!r}, bio={bio!r}")
+            logger.debug(f"Dados processados: username={username!r}, bio={bio!r}, profile_picture={profile_picture}, remove_profile_picture={remove_profile_picture}")
 
             if not username:
                 logger.warning("Username vazio")
@@ -448,18 +403,41 @@ class ProfileUpdate(APIView):
                 return Response({'detail': 'Nome de usuário já existe'}, status=status.HTTP_400_BAD_REQUEST)
 
             if new_password:
-                if not old_password or not authenticate(request, username=user.username, password=old_password):
+                if not old_password or not authenticate(request._request, username=user.username, password=old_password):
                     logger.warning("Senha antiga inválida")
                     return Response({'detail': 'Senha antiga inválida'}, status=status.HTTP_400_BAD_REQUEST)
                 user.set_password(new_password)
 
-            user.username = username
-            user.bio = bio
+            if profile_picture:
+                name, ext = os.path.splitext(profile_picture.name)
+                sanitized_name = f"{slugify(name)}_{os.urandom(8).hex()}{ext.lower()}"
+                current_timestamp = int(time.time())
+                logger.debug(f"Generated timestamp: {current_timestamp}")
+                if current_timestamp < 1700000000:
+                    return Response({'detail': 'Timestamp inválido'}, status=status.HTTP_400_BAD_REQUEST)
+                cloudinary.config(
+                    cloud_name=os.getenv('CLOUDINARY_CLOUD_NAME'),
+                    api_key=os.getenv('CLOUDINARY_API_KEY'),
+                    api_secret=os.getenv('CLOUDINARY_API_SECRET')
+                )
+                upload_result = cloudinary.uploader.upload(
+                    profile_picture,
+                    folder="profile_pics",
+                    public_id=sanitized_name,
+                    overwrite=True,
+                    timestamp=current_timestamp
+                )
+                user.profile_picture = upload_result['secure_url']
+                logger.debug(f"Profile picture uploaded: url={user.profile_picture}")
+
             if remove_profile_picture and user.profile_picture:
                 user.profile_picture = None
                 logger.info("Profile picture removed")
 
+            user.username = username
+            user.bio = bio
             user.save()
+
             logger.debug(f"Saved: username={user.username}, profile_picture={user.profile_picture if user.profile_picture else ''}")
 
             return Response({
