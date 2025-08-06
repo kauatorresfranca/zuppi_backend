@@ -7,11 +7,11 @@ from rest_framework import status
 from rest_framework.authentication import TokenAuthentication
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.authtoken.models import Token
-from .models import Post, PostAction
+from rest_framework.parsers import JSONParser
+from .models import Post, PostAction, Comment
 import json
 import logging
 from rest_framework.parsers import MultiPartParser
-from rest_framework.request import Request
 from rest_framework.exceptions import ParseError
 from django.utils.text import slugify
 import os
@@ -23,7 +23,6 @@ logger = logging.getLogger(__name__)
 
 User = get_user_model()
 
-# Existing function-based views (unchanged)
 class PostList(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [AllowAny]
@@ -53,9 +52,8 @@ class PostCreate(APIView):
     def post(self, request):
         try:
             if request.content_type.startswith('multipart/form-data'):
-                drf_request = Request(request, parsers=[MultiPartParser()])
-                data = drf_request.data
-                files = drf_request.FILES
+                data = request.data
+                files = request.FILES
                 text = data.get('text')
                 image = files.get('image')
                 if not text and not image:
@@ -170,23 +168,56 @@ class PostRepost(APIView):
 class PostComment(APIView):
     authentication_classes = [TokenAuthentication]
     permission_classes = [IsAuthenticated]
+    parser_classes = [JSONParser]  # Forçar parsing de JSON
 
     def post(self, request, post_id):
         post = get_object_or_404(Post, id=post_id)
-        action = PostAction.objects.filter(user=request.user, post=post, action_type='comment').first()
-        if action:
-            action.delete()
-            post.comments_count = max(0, post.comments_count - 1)
-            logger.debug(f"Comentário removido do post {post_id}: comments_count={post.comments_count}")
-        else:
-            PostAction.objects.create(user=request.user, post=post, action_type='comment')
+        try:
+            data = request.data
+            logger.debug(f"Received comment data for post {post_id}: {data}")
+            text = data.get('text')
+            if not text:
+                logger.warning(f"Comentário vazio para post {post_id}")
+                return Response({'detail': 'O comentário não pode estar vazio'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            comment = Comment.objects.create(
+                post=post,
+                author=request.user,
+                text=text
+            )
             post.comments_count += 1
+            post.save()
             logger.debug(f"Comentário adicionado ao post {post_id}: comments_count={post.comments_count}")
-        post.save()
-        return Response({'comments_count': post.comments_count, 'id': post.id})
+            return Response({
+                'id': comment.id,
+                'text': comment.text,
+                'author': comment.author.username,
+                'created_at': comment.created_at.isoformat(),
+                'comments_count': post.comments_count
+            })
+        except Exception as e:
+            logger.error(f"Erro ao criar comentário: {e}")
+            return Response({'detail': str(e)}, status=status.HTTP_400_BAD_REQUEST)
 
-    def delete(self, request, post_id):
-        return self.post(request, post_id)
+class PostCommentsList(APIView):
+    authentication_classes = [TokenAuthentication]
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request, post_id):
+        post = get_object_or_404(Post, id=post_id)
+        comments = Comment.objects.filter(post=post).order_by('-created_at')
+        data = [
+            {
+                'id': comment.id,
+                'text': comment.text,
+                'author': comment.author.username,
+                'created_at': comment.created_at.isoformat(),
+                'profile_picture': comment.author.profile_picture if comment.author.profile_picture else ''
+            }
+            for comment in comments
+        ]
+        logger.debug(f"Comentários do post {post_id}: {data}")
+        return Response({'comments': data})
 
 class PostShare(APIView):
     authentication_classes = [TokenAuthentication]
@@ -382,7 +413,6 @@ class ProfileUpdate(APIView):
             # Dados do formulário
             data = request.data
             files = request.FILES
-
             bio = data.get('bio', user.bio or '')
             username = data.get('username')
             profile_picture = files.get('profile_picture')

@@ -5,8 +5,8 @@ from django.conf import settings
 class CustomUser(AbstractUser):
     bio = models.TextField(blank=True, null=True)
     location = models.CharField(max_length=100, blank=True, null=True)
-    profile_picture = models.URLField(blank=True, null=True)  # Changed to URLField for Cloudinary URLs
-    cover_image = models.URLField(blank=True, null=True)     # Changed to URLField for Cloudinary URLs
+    profile_picture = models.URLField(blank=True, null=True)
+    cover_image = models.URLField(blank=True, null=True)
     following = models.ManyToManyField('self', symmetrical=False, blank=True, related_name='followers_set')
 
     groups = models.ManyToManyField(
@@ -26,7 +26,7 @@ class CustomUser(AbstractUser):
 class Post(models.Model):
     author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE, related_name='posts')
     text = models.TextField()
-    image = models.URLField(blank=True, null=True)  # Changed to URLField for Cloudinary URLs
+    image = models.URLField(blank=True, null=True)
     created_at = models.DateTimeField(auto_now_add=True)
     likes_count = models.PositiveIntegerField(default=0)
     reposts_count = models.PositiveIntegerField(default=0)
@@ -36,6 +36,15 @@ class Post(models.Model):
     def __str__(self):
         return f'{self.author.username}: {self.text[:20]}'
 
+class Comment(models.Model):
+    post = models.ForeignKey(Post, on_delete=models.CASCADE, related_name='comments')
+    author = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
+    text = models.TextField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f'{self.author.username} commented on {self.post.id}: {self.text[:20]}'
+
 class PostAction(models.Model):
     user = models.ForeignKey(settings.AUTH_USER_MODEL, on_delete=models.CASCADE)
     post = models.ForeignKey(Post, on_delete=models.CASCADE)
@@ -44,7 +53,6 @@ class PostAction(models.Model):
         choices=[
             ('like', 'Like'),
             ('repost', 'Repost'),
-            ('comment', 'Comment'),
             ('share', 'Share'),
         ]
     )
